@@ -152,16 +152,18 @@ jobs:
 
       - name: Build debug APK
         run: |
+          mkdir -p ../build-logs
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee "$RUNNER_TEMP/gradle.log"
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee ../build-logs/gradle-debug.log
           test "${PIPESTATUS[0]}" -eq 0
 
       - name: Build release APK + AAB
         if: env.SIGNING == 'release'
         run: |
           cd android
-          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee -a "$RUNNER_TEMP/gradle.log"
+          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace --info \
+            2>&1 | tee ../build-logs/gradle-release.log
           test "${PIPESTATUS[0]}" -eq 0
 
       - name: Stage artifacts
@@ -235,28 +237,46 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Collect every gradle log we can find — `$RUNNER_TEMP` is not always
+          # readable from a later step, so the builds also log into the
+          # workspace (`build-logs/`).
+          LOGS=""
+          for f in build-logs/gradle-debug.log build-logs/gradle-release.log \
+                   "$RUNNER_TEMP"/gradle*.log /tmp/gradle*.log; do
+            [ -s "$f" ] && LOGS="$LOGS $f"
+          done
           {
-            echo "## ❌ APK build failed"
+            echo "## \u274c APK build failed"
             echo
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo
-            echo "```"
-            grep -nE "FAILURE|What went wrong|Caused by|error:|Execution failed|> Task .* FAILED|A problem occurred" \
-              "$RUNNER_TEMP/gradle.log" 2>/dev/null | tail -50 || echo "(no gradle.log)"
-            echo "```"
-            echo
-            echo "<details><summary>last 120 lines</summary>"
+            echo "Logs found: ${LOGS:-none} \· runner-temp=${RUNNER_TEMP:-unset}"
             echo
             echo "```"
-            tail -120 "$RUNNER_TEMP/gradle.log" 2>/dev/null || echo "(no gradle.log)"
+            if [ -n "$LOGS" ]; then
+              grep -hnE "FAILURE|What went wrong|^> Task .*FAILED|Caused by:|error:|Execution failed|OutOfMemory|Unable to|Could not" $LOGS | tail -60
+            else
+              echo "(no gradle log found)"
+            fi
+            echo "```"
+            echo
+            echo "<details><summary>tail of the last log</summary>"
+            echo
+            echo "```"
+            if [ -n "$LOGS" ]; then
+              tail -150 $(echo "$LOGS" | awk '{print $NF}')
+            else
+              ls -la . build-logs "${RUNNER_TEMP:-/tmp}" 2>&1 | head -60
+            fi
             echo "```"
             echo
             echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } > build-logs/failure-report.md
+          cat build-logs/failure-report.md >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             gh pr comment "${{ github.event.pull_request.number }}" \
-              --repo "${{ github.repository }}" --body-file "$GITHUB_STEP_SUMMARY" || true
+              --repo "${{ github.repository }}" --body-file build-logs/failure-report.md || true
           fi
 
       - name: Upload gradle log on failure
@@ -264,4 +284,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gradle-log
-          path: ${{ runner.temp }}/gradle.log
+          path: build-logs/
+          if-no-files-found: warn
