@@ -87,16 +87,24 @@ jobs:
           script: |
             const fs = require('fs');
             const logPath = `${process.env.RUNNER_TEMP}/gradle.log`;
-            let tail = '(no log file)';
+            let report = '(no log file)';
             try {
-              tail = fs.readFileSync(logPath, 'utf8').slice(-14000);
+              const lines = fs.readFileSync(logPath, 'utf8').split('\n');
+              const out = [];
+              lines.forEach((l, i) => {
+                if (/What went wrong|Execution failed for task|> Task .+ FAILED|Caused by:|\berror:|FAILED$|BUILD FAILED|invalid (source|target) release|cannot find symbol|package .* does not exist|Duplicate /.test(l)) {
+                  out.push(`--- line ${i} ---`);
+                  for (let j = Math.max(0, i - 1); j <= Math.min(lines.length - 1, i + 6); j++) out.push(lines[j]);
+                }
+              });
+              report = out.join('\n').slice(0, 20000) || lines.slice(-120).join('\n');
             } catch (e) {
-              tail = `(could not read log: ${e.message})`;
+              report = `(could not read log: ${e.message})`;
             }
             const title = 'CI debug: APK build failure';
             const { owner, repo } = context.repo;
             const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
-            const body = `## Build failed\nRun: ${runUrl}\nBranch: \`${context.ref}\` @ \`${context.sha.slice(0, 7)}\`\n\n<details><summary>gradle tail (last ~14k chars)</summary>\n\n\`\`\`\n${tail}\n\`\`\`\n</details>`;
+            const body = `## Build failed\nRun: ${runUrl}\nBranch: \`${context.ref}\` @ \`${context.sha.slice(0, 7)}\`\n\n<details><summary>failure lines</summary>\n\n\`\`\`\n${report}\n\`\`\`\n</details>`;
             const { data: issues } = await github.rest.issues.listForRepo({ owner, repo, state: 'open', per_page: 50 });
             const existing = issues.find((i) => i.title === title);
             if (existing) {
