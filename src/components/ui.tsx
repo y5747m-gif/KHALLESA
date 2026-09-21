@@ -2,7 +2,7 @@ import { ShieldAlert, ShieldCheck, ShieldQuestion, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { TrustLevel } from '../lib/types';
-import { TRUST_META } from '../lib/types';
+import { trustHint, trustLabel, useLang, useStrings } from '../lib/i18n';
 import { cx } from '../lib/utils';
 
 // ─── Bottom sheet ────────────────────────────────────────────────────
@@ -15,6 +15,7 @@ export function Sheet(props: {
   children: ReactNode;
   tall?: boolean;
 }) {
+  const s = useStrings();
   if (!props.open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -32,7 +33,7 @@ export function Sheet(props: {
           </div>
           <button
             onClick={props.onClose}
-            aria-label="إغلاق"
+            aria-label={s.close}
             className="rounded-full bg-black/5 p-2 text-neutral-600 transition hover:bg-black/10 dark:bg-white/10 dark:text-neutral-300"
           >
             <X size={18} />
@@ -54,10 +55,11 @@ const TRUST_STYLE: Record<TrustLevel, { cls: string; Icon: LucideIcon }> = {
 };
 
 export function TrustBadge({ level, small }: { level: TrustLevel; small?: boolean }) {
+  const lang = useLang();
   const { cls, Icon } = TRUST_STYLE[level];
   return (
     <span
-      title={TRUST_META[level].hint}
+      title={trustHint(level, lang)}
       className={cx(
         'inline-flex items-center gap-1 rounded-full font-bold',
         small ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs',
@@ -65,7 +67,7 @@ export function TrustBadge({ level, small }: { level: TrustLevel; small?: boolea
       )}
     >
       <Icon size={small ? 12 : 14} />
-      {TRUST_META[level].label}
+      {trustLabel(level, lang)}
     </span>
   );
 }
@@ -116,7 +118,7 @@ export function EmptyState(props: { icon: LucideIcon; title: string; hint?: stri
 // ─── Avatar ──────────────────────────────────────────────────────────
 
 export function Avatar({ name, color, size = 40 }: { name: string; color: string; size?: number }) {
-  const initial = (name || '؟').trim().charAt(0);
+  const initial = (name || '?').trim().charAt(0);
   return (
     <div
       className="flex shrink-0 items-center justify-center rounded-full font-extrabold text-white"

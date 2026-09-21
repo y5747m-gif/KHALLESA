@@ -13,9 +13,9 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { PathId, RankedTask } from '../lib/types';
-import { PATH_META } from '../lib/types';
+import { pathHint, pathLabel, useLang, useStrings } from '../lib/i18n';
 import { progressOf } from '../lib/engine';
-import { cx, daysLeftText } from '../lib/utils';
+import { cx, daysLeftText, num } from '../lib/utils';
 import { ProgressBar } from './ui';
 
 const PATH_ORDER: PathId[] = ['car', 'home', 'work', 'travel', 'money', 'docs', 'family', 'other'];
@@ -38,6 +38,8 @@ interface PathsProps {
 }
 
 export default function Paths({ ranked, onOpenTask, onAdd }: PathsProps) {
+  const s = useStrings();
+  const lang = useLang();
   const [expanded, setExpanded] = useState<PathId | null>('car');
   const active = ranked.filter((r) => r.bucket !== 'done');
 
@@ -45,14 +47,14 @@ export default function Paths({ ranked, onOpenTask, onAdd }: PathsProps) {
     <div className="mx-auto w-full max-w-2xl space-y-3 px-4 pt-5 pb-28">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black">مساراتي 🗺️</h1>
+          <h1 className="text-2xl font-black">{s.pathsTitle}</h1>
           <p className="text-sm font-bold text-neutral-500 dark:text-neutral-400">
-            كل حاجة في حياتك مسار — {active.length.toLocaleString('ar-EG')} مسار شغال
+            {s.pathsSub} — {num(active.length, lang)} {s.pathsActive}
           </p>
         </div>
         <button
           onClick={onAdd}
-          aria-label="مسار جديد"
+          aria-label={s.newPath}
           className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-white shadow-lg"
         >
           <Plus size={22} />
@@ -65,7 +67,7 @@ export default function Paths({ ranked, onOpenTask, onAdd }: PathsProps) {
         const { Icon, cls } = PATH_ICONS[pid];
         const isOpen = expanded === pid;
         const avg = items.length
-          ? Math.round(items.reduce((s, r) => s + progressOf(r.task), 0) / items.length)
+          ? Math.round(items.reduce((sm, r) => sm + progressOf(r.task), 0) / items.length)
           : doneCount > 0 ? 100 : 0;
         return (
           <div key={pid} className="overflow-hidden rounded-3xl bg-white shadow-sm dark:bg-neutral-900">
@@ -73,16 +75,16 @@ export default function Paths({ ranked, onOpenTask, onAdd }: PathsProps) {
               <span className={cx('rounded-2xl p-2.5', cls)}>
                 <Icon size={22} />
               </span>
-              <span className="min-w-0 flex-1 text-right">
-                <span className="block font-black">{PATH_META[pid].label}</span>
-                <span className="block truncate text-xs font-bold text-neutral-400">{PATH_META[pid].hint}</span>
+              <span className="min-w-0 flex-1 text-start">
+                <span className="block font-black">{pathLabel(pid, lang)}</span>
+                <span className="block truncate text-xs font-bold text-neutral-400">{pathHint(pid, lang)}</span>
                 {(items.length > 0 || doneCount > 0) && (
                   <span className="mt-1.5 block"><ProgressBar value={avg} /></span>
                 )}
               </span>
               <span className="flex shrink-0 flex-col items-center gap-1">
                 <span className={cx('rounded-full px-2.5 py-0.5 text-xs font-black', items.length ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-black/5 text-neutral-400 dark:bg-white/10')}>
-                  {items.length.toLocaleString('ar-EG')}
+                  {num(items.length, lang)}
                 </span>
                 <ChevronDown size={16} className={cx('text-neutral-400 transition', isOpen && 'rotate-180')} />
               </span>
@@ -91,21 +93,21 @@ export default function Paths({ ranked, onOpenTask, onAdd }: PathsProps) {
               <div className="space-y-1.5 border-t border-black/5 p-3 dark:border-white/10">
                 {items.length === 0 ? (
                   <p className="rounded-xl bg-black/[0.03] p-3 text-center text-xs font-bold text-neutral-400 dark:bg-white/5">
-                    مفيش مسارات شغالة هنا {doneCount > 0 ? `— خلصت ${doneCount.toLocaleString('ar-EG')} قبل كده 🎉` : '— ابدأ أول واحد'}
+                    {s.noActive} {doneCount > 0 ? `— ${num(doneCount, lang)} ${s.doneBefore}` : `— ${s.startFirstOne}`}
                   </p>
                 ) : (
                   items.map(({ task, daysLeft }) => (
                     <button
                       key={task.id}
                       onClick={() => onOpenTask(task.id)}
-                      className="flex w-full items-center gap-2 rounded-xl bg-black/[0.03] p-2.5 text-right transition hover:bg-black/[0.06] dark:bg-white/5"
+                      className="flex w-full items-center gap-2 rounded-xl bg-black/[0.03] p-2.5 text-start transition hover:bg-black/[0.06] dark:bg-white/5"
                     >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-extrabold">{task.title}</span>
-                        <span className="block text-[11px] font-bold text-neutral-400">{daysLeftText(daysLeft)}</span>
+                        <span className="block text-[11px] font-bold text-neutral-400">{daysLeftText(daysLeft, lang)}</span>
                       </span>
                       <span className="shrink-0 text-xs font-black text-brand-600">
-                        {progressOf(task).toLocaleString('ar-EG')}%
+                        {num(progressOf(task), lang)}%
                       </span>
                     </button>
                   ))

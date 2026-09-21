@@ -1,8 +1,9 @@
 // ─── OCR on-device (Tesseract.js, Arabic + English) ────────────────────
-// First run downloads trained data (~few MB) — then works offline.
+import type { Lang } from './i18n';
 
 export async function recognizeText(
   image: string,
+  lang: Lang = 'ar',
   onProgress?: (p: number) => void,
 ): Promise<string> {
   try {
@@ -14,6 +15,10 @@ export async function recognizeText(
     });
     return (result.data.text || '').trim();
   } catch {
-    throw new Error('تعذر قراءة الصورة — تأكد من وضوحها وحاول مجددًا');
+    throw new Error(
+      lang === 'ar'
+        ? 'تعذر قراءة الصورة — تأكد من وضوحها وحاول مجددًا'
+        : 'Could not read the image — make sure it is clear and retry',
+    );
   }
 }

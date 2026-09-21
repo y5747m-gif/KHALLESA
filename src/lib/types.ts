@@ -1,5 +1,6 @@
 // ─── KHALLESA core types ─────────────────────────────────────────────
 // Problem → Action Plan → Execution → Proof (not Task → Reminder)
+import type { Lang } from './i18n';
 
 export type PathId =
   | 'car'
@@ -54,6 +55,7 @@ export interface Consequence {
 export interface SourceRef {
   sourceId: string;
   note?: string;
+  noteEn?: string;
 }
 
 export interface Question {
@@ -120,8 +122,10 @@ export interface ActivityEvent {
 export interface AppSettings {
   displayName: string;
   country: string;
+  lang: Lang;
   darkMode: 'system' | 'light' | 'dark';
   notificationsEnabled: boolean;
+  onboarded: boolean;
   apiKey: string;
   apiBase: string;
   apiModel: string;
@@ -154,35 +158,3 @@ export interface RankedTask {
   reason: string;
   score: number;
 }
-
-export const PATH_META: Record<PathId, { label: string; hint: string }> = {
-  car: { label: 'السيارة', hint: 'رخصة، تأمين، صيانة، مخالفات' },
-  home: { label: 'المنزل', hint: 'عقود، مرافق، صيانة، ضمانات' },
-  work: { label: 'العمل', hint: 'طلبات، عقود، مواعيد' },
-  travel: { label: 'السفر', hint: 'حجز، مستندات، فنادق، تأمين' },
-  money: { label: 'الفلوس والفواتير', hint: 'فواتير، مشتريات، إرجاع' },
-  docs: { label: 'أوراق ومستندات', hint: 'بطاقة، جواز، طلبات حكومية' },
-  family: { label: 'العائلة', hint: 'مهام تخص أفراد الأسرة' },
-  other: { label: 'أخرى', hint: 'أي حاجة تانية عايز تخلّصها' },
-};
-
-export const CATEGORY_META: Record<CategoryId, { label: string }> = {
-  car_license: { label: 'رخصة ومرور' },
-  national_id: { label: 'بطاقة رقم قومي' },
-  passport: { label: 'جواز سفر' },
-  travel: { label: 'سفر ورحلات' },
-  move: { label: 'نقل وسكن' },
-  bill: { label: 'فاتورة' },
-  return: { label: 'إرجاع منتج' },
-  warranty: { label: 'ضمان وعطل' },
-  purchase: { label: 'عملية شراء' },
-  gov_request: { label: 'طلب حكومي' },
-  generic: { label: 'مهمة عامة' },
-};
-
-export const TRUST_META: Record<TrustLevel, { label: string; hint: string }> = {
-  official: { label: 'مصدر رسمي', hint: 'المعلومة من جهة رسمية معلنة' },
-  trusted: { label: 'مصدر موثوق', hint: 'معلومة عامة موثوقة لكن راجع التفاصيل' },
-  verify: { label: 'تحتاج تحقق', hint: 'راجع الجهة المختصة قبل التنفيذ' },
-  danger: { label: 'لا تستخدم دون تحقق', hint: 'معلومة غير مؤكدة — تحقق أولًا' },
-};

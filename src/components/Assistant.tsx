@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bot, Loader2, Send, Sparkles, X } from 'lucide-react';
 import type { Answers, Detection, FamilyMember, KhTask, RankedTask } from '../lib/types';
-import { CATEGORY_META } from '../lib/types';
-import { buildTaskFromDetection, detect, nextStep } from '../lib/engine';
-import { normAr } from '../lib/engine';
-import { cx, formatShortDateAr } from '../lib/utils';
-import { uid } from '../lib/utils';
+import { catLabel, useLang, useStrings } from '../lib/i18n';
+import { buildTaskFromDetection, detect, nextStep, normAr } from '../lib/engine';
+import { cx, formatShortDate, num, uid } from '../lib/utils';
 import { Chip } from './ui';
 
 interface AssistantProps {
@@ -32,6 +30,11 @@ type Flow =
   | { stage: 'asking'; detection: Detection; raw: string; qi: number; answers: Answers };
 
 export default function Assistant({ open, sessionKey, ranked, members, onClose, onCreate, onOpenTask }: AssistantProps) {
+  const s = useStrings();
+  const lang = useLang();
+  const rtl = lang === 'ar';
+  const userCorner = rtl ? 'rounded-bl-md' : 'rounded-br-md';
+  const botCorner = rtl ? 'rounded-br-md' : 'rounded-bl-md';
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -40,15 +43,10 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
 
   useEffect(() => {
     if (!open) return;
-    setMsgs([
-      {
-        id: uid('m'),
-        role: 'bot',
-        text: 'أهلًا! أنا خَلِّص AI 🤖\nمش شات عادي — قولي مشكلتك وأنا أحوّلها لمشروع بخطوات.\nجرّب: "أنا مسافر يوم 15 أكتوبر" أو "رخصة العربية هتخلص".',
-      },
-    ]);
+    setMsgs([{ id: uid('m'), role: 'bot', text: s.aiHello }]);
     setInput('');
     setFlow({ stage: 'idle' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sessionKey]);
 
   useEffect(() => {
@@ -67,24 +65,24 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
     }, 550);
   }
 
-  function handlePriorityQuestion(): boolean {
-    const t = normAr(input);
-    if (/(اعمل ايه|اعمل إيه|المهم|اولوي|اولويات|ابدأ بايه|ابدا بايه|ماذا افعل)/.test(t)) {
-      const top = ranked.filter((r) => r.bucket !== 'done').slice(0, 3);
-      if (top.length === 0) {
-        botSay('كله خالص يا بطل! 🎉 مفيش حاجة معلقة دلوقتي.');
-      } else {
-        const lines = top.map(({ task, reason }, i) => {
-          const nx = nextStep(task);
-          return `${i + 1}⃣ ${task.title}\n   📌 ${reason}${nx ? `\n   👈 ابدأ بـ: ${nx.title}` : ''}`;
-        });
-        botSay(`بص على أهم ${top.length.toLocaleString('ar-EG')} حاجات عندك دلوقتي:\n\n${lines.join('\n\n')}`, {
-          openTaskId: top[0].task.id,
-        });
-      }
-      return true;
+  function handlePriorityQuestion(text: string): boolean {
+    const t = normAr(text);
+    const isAr = /(اعمل ايه|اعمل إيه|المهم|اولوي|اولويات|ابدأ بايه|ابدا بايه|ماذا افعل)/.test(t);
+    const isEn = /(what.*first|what should i do|priorit|most important|top tasks)/.test(t);
+    if (!isAr && !isEn) return false;
+    const top = ranked.filter((r) => r.bucket !== 'done').slice(0, 3);
+    if (top.length === 0) {
+      botSay(s.aiAllClear);
+    } else {
+      const lines = top.map(({ task, reason }, i) => {
+        const nx = nextStep(task);
+        return `${num(i + 1, lang)}⃣ ${task.title}\n   📌 ${reason}${nx ? `\n   👈 ${s.aiStartWith} ${nx.title}` : ''}`;
+      });
+      botSay(`${s.aiTopN} ${num(top.length, lang)} ${s.aiThings}\n\n${lines.join('\n\n')}`, {
+        openTaskId: top[0].task.id,
+      });
     }
-    return false;
+    return true;
   }
 
   function send(textRaw?: string) {
@@ -94,15 +92,16 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
     setInput('');
 
     if (flow.stage === 'idle') {
-      if (handlePriorityQuestion()) return;
-      const d = detect(text);
+      if (handlePriorityQuestion(text)) return;
+      const d = detect(text, lang);
       const f: Flow = { stage: 'asking', detection: d, raw: text, qi: 0, answers: {} };
       setFlow(f);
-      askQuestion(f, `فهمت إن دي: *${CATEGORY_META[d.category].label}* ✅\n${d.title}`);
+      askQuestion(f, `${s.aiUnderstood} *${catLabel(d.category, lang)}* ✅\n${d.title}`);
     } else {
       const answers = { ...flow.answers };
       const q = flow.detection.questions[flow.qi];
-      if (q) answers[q.id] = text;
+      const skipped = /^(تخطي|skip)$/i.test(text);
+      if (q && !skipped) answers[q.id] = text;
       const next: Flow = { ...flow, answers, qi: flow.qi + 1 };
       setFlow(next);
       askQuestion(next);
@@ -116,8 +115,9 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
       finishPlan(f);
       return;
     }
-    const skip = q.optional ? '\n(اختياري — اكتب "تخطي" لو مش عايز تجاوب)' : '';
-    botSay(`${prefix ? prefix + '\n\n' : ''}❓ ${q.label}${skip}`, q.options ? { options: q.options } : undefined);
+    const skip = q.optional ? `\n${s.aiSkip}` : '';
+    const options = q.options ? [...q.options, ...(q.optional ? [lang === 'ar' ? 'تخطي' : 'Skip'] : [])] : undefined;
+    botSay(`${prefix ? prefix + '\n\n' : ''}❓ ${q.label}${skip}`, options ? { options } : undefined);
   }
 
   function answerOption(opt: string) {
@@ -125,7 +125,8 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
     push({ role: 'user', text: opt });
     const q = flow.detection.questions[flow.qi];
     const answers = { ...flow.answers };
-    if (q) answers[q.id] = opt;
+    const skipped = /^(تخطي|Skip)$/i.test(opt);
+    if (q && !skipped) answers[q.id] = opt;
     const next: Flow = { ...flow, answers, qi: flow.qi + 1 };
     setFlow(next);
     askQuestion(next);
@@ -133,23 +134,21 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
 
   function finishPlan(f: Extract<Flow, { stage: 'asking' }>) {
     const me = members.find((m) => m.isMe) ?? members[0];
-    const task = buildTaskFromDetection(f.raw, f.detection, f.answers, 'assistant', {
+    const task = buildTaskFromDetection(f.raw, f.detection, f.answers, 'assistant', lang, {
       ownerId: me?.id,
       assigneeId: me?.id,
       followUp: true,
     });
     setFlow({ stage: 'idle' });
     botSay(
-      `خطتك جاهزة 🎯\n*${task.title}*\n${task.summary}\n\n📋 ${task.steps.length.toLocaleString('ar-EG')} خطوات • 📄 ${task.docs.length.toLocaleString('ar-EG')} مستندات${task.deadline ? ` • 📅 ${formatShortDateAr(task.deadline)}` : ''}
-
-اضغط "اعمل المسار" وأنا هتابعك لحد ما تخلص.`,
+      `${s.aiPlanReady}\n*${task.title}*\n${task.summary}\n\n📋 ${num(task.steps.length, lang)} • 📄 ${num(task.docs.length, lang)}${task.deadline ? ` • 📅 ${formatShortDate(task.deadline, lang)}` : ''}\n\n${s.aiPressMake}`,
       { plan: task },
     );
   }
 
   function createPlan(plan: KhTask) {
     onCreate(plan);
-    push({ role: 'bot', text: `تمام! عملت مسار "${plan.title}" وهتابعه معاك 🚀`, openTaskId: plan.id });
+    push({ role: 'bot', text: `${s.aiCreated} "${plan.title}" ${s.aiCreated2}`, openTaskId: plan.id });
   }
 
   if (!open) return null;
@@ -162,12 +161,12 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
           <Bot size={22} />
         </span>
         <div className="flex-1">
-          <p className="font-black">خَلِّص AI</p>
+          <p className="font-black">{s.aiTitle}</p>
           <p className="flex items-center gap-1 text-xs font-bold text-brand-600">
-            <Sparkles size={12} /> بيحوّل كلامك لمشاريع بخطوات
+            <Sparkles size={12} /> {s.aiSub}
           </p>
         </div>
-        <button onClick={onClose} aria-label="إغلاق" className="rounded-full bg-black/5 p-2 dark:bg-white/10">
+        <button onClick={onClose} aria-label={s.close} className="rounded-full bg-black/5 p-2 dark:bg-white/10">
           <X size={18} />
         </button>
       </div>
@@ -179,9 +178,7 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
             <div
               className={cx(
                 'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-7 font-bold whitespace-pre-wrap shadow-sm',
-                m.role === 'user'
-                  ? 'rounded-bl-md bg-brand-500 text-white'
-                  : 'rounded-br-md bg-white dark:bg-neutral-900',
+                m.role === 'user' ? `${userCorner} bg-brand-500 text-white` : `${botCorner} bg-white dark:bg-neutral-900`,
               )}
             >
               {m.text}
@@ -196,17 +193,17 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
               )}
               {m.plan && (
                 <span className="mt-2 block rounded-xl bg-black/[0.04] p-2.5 dark:bg-white/5">
-                  <span className="block text-xs font-extrabold">أول خطوتين:</span>
-                  {m.plan.steps.slice(0, 2).map((s, i) => (
-                    <span key={s.id} className="block text-xs">
-                      {(i + 1).toLocaleString('ar-EG')}. {s.title}
+                  <span className="block text-xs font-extrabold">{s.aiFirstTwo}</span>
+                  {m.plan.steps.slice(0, 2).map((stp, i) => (
+                    <span key={stp.id} className="block text-xs">
+                      {num(i + 1, lang)}. {stp.title}
                     </span>
                   ))}
                   <button
                     onClick={() => createPlan(m.plan as KhTask)}
                     className="mt-2 w-full rounded-xl bg-brand-500 py-2 text-sm font-black text-white"
                   >
-                    اعمل المسار 🚀
+                    {s.aiMakePath}
                   </button>
                 </span>
               )}
@@ -218,7 +215,7 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
                   }}
                   className="mt-2 w-full rounded-xl bg-neutral-900 py-2 text-xs font-extrabold text-white dark:bg-white dark:text-neutral-900"
                 >
-                  افتح المسار
+                  {s.aiOpenPath}
                 </button>
               )}
             </div>
@@ -226,12 +223,29 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
         ))}
         {thinking && (
           <div className="flex justify-start">
-            <div className="flex items-center gap-2 rounded-2xl rounded-br-md bg-white px-4 py-3 text-sm font-bold text-neutral-500 shadow-sm dark:bg-neutral-900">
-              <Loader2 size={16} className="animate-spin" /> بيفكر…
+            <div className={cx('flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-neutral-500 shadow-sm dark:bg-neutral-900', botCorner)}>
+              <Loader2 size={16} className="animate-spin" /> {s.aiThinking}
             </div>
           </div>
         )}
       </div>
+
+      {/* quick suggestions */}
+      {flow.stage === 'idle' && (
+        <div className="mx-auto w-full max-w-2xl px-4 pb-1">
+          <div className="no-scrollbar flex gap-2 overflow-x-auto">
+            {[s.aiSug1, s.aiSug2, s.aiSug3].map((sug) => (
+              <button
+                key={sug}
+                onClick={() => send(sug)}
+                className="shrink-0 rounded-full border border-brand-500/40 bg-white px-3.5 py-1.5 text-xs font-extrabold text-brand-700 shadow-sm dark:bg-neutral-900 dark:text-brand-400"
+              >
+                {sug}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* input */}
       <div className="pb-safe border-t border-black/5 bg-white px-4 py-3 dark:border-white/10 dark:bg-neutral-900">
@@ -242,19 +256,19 @@ export default function Assistant({ open, sessionKey, ranked, members, onClose, 
             onKeyDown={(e) => {
               if (e.key === 'Enter') send();
             }}
-            placeholder="قولي مشكلتك…"
+            placeholder={s.aiInputPh}
             className="flex-1 rounded-2xl border-2 border-black/10 bg-black/[0.02] px-4 py-2.5 text-sm font-bold outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5"
           />
           <button
             onClick={() => send()}
-            aria-label="إرسال"
+            aria-label={s.aiSend}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-500 text-white"
           >
-            <Send size={18} className="-scale-x-100" />
+            <Send size={18} className={rtl ? '-scale-x-100' : ''} />
           </button>
         </div>
         <p className="mx-auto mt-1.5 w-full max-w-2xl text-center text-[11px] text-neutral-400">
-          جرّب تسأل: "أعمل إيه الأول؟" — هيرتبلك أولوياتك 🧠
+          {s.aiTry}
         </p>
       </div>
     </div>

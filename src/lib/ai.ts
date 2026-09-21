@@ -3,10 +3,8 @@ import type { AppSettings } from './types';
 import { uid } from './utils';
 
 // ─── Optional LLM enhancement (OpenAI-compatible, user key) ──────────
-// The local engine always works offline. If the user adds an API key in
-// Settings, we ask the model to refine the steps for their exact case.
 
-const SYSTEM = `أنت "خَلِّصها"، مساعد مصري عملي يحوّل المشاكل لخطط تنفيذ.
+const SYSTEM_AR = `أنت "خَلِّصها"، مساعد مصري عملي يحوّل المشاكل لخطط تنفيذ.
 أجب بصيغة JSON فقط بهذا الشكل:
 {"summary":"...","steps":[{"title":"...","detail":"..."}],"docs":["..."]}
 القواعد:
@@ -14,6 +12,15 @@ const SYSTEM = `أنت "خَلِّصها"، مساعد مصري عملي يحو�
 - من 4 إلى 7 خطوات مرتبة تنفيذيًا ومناسبة لمصر.
 - لا تخترع رسومًا أو مواعيد أو قوانين محددة — لو مش متأكد اكتب "راجع الجهة الرسمية".
 - المستندات: قائمة قصيرة بأسماء المستندات فقط.`;
+
+const SYSTEM_EN = `You are "KHALLESA", a practical assistant that turns problems into action plans.
+Reply with JSON only in this shape:
+{"summary":"...","steps":[{"title":"...","detail":"..."}],"docs":["..."]}
+Rules:
+- Simple, clear, practical English; short sentences.
+- 4 to 7 ordered steps suitable for Egypt.
+- Never invent specific fees, dates or laws — when unsure write "check the official authority".
+- Documents: a short list of document names only.`;
 
 export async function enhanceWithAI(
   plan: BuiltPlan,
@@ -33,10 +40,10 @@ export async function enhanceWithAI(
         response_format: { type: 'json_object' },
         temperature: 0.4,
         messages: [
-          { role: 'system', content: SYSTEM },
+          { role: 'system', content: settings.lang === 'ar' ? SYSTEM_AR : SYSTEM_EN },
           {
             role: 'user',
-            content: `مشكلة المستخدم: ${rawInput}\nالخطة الحالية:\n${JSON.stringify({ title: plan.title, summary: plan.summary, steps: plan.steps.map((s) => s.title), docs: plan.docs.map((d) => d.label) })}\nحسّن الخطة لنفس المشكلة.`,
+            content: `User problem: ${rawInput}\nCurrent plan:\n${JSON.stringify({ title: plan.title, summary: plan.summary, steps: plan.steps.map((s) => s.title), docs: plan.docs.map((d) => d.label) })}\nImprove the plan for the same problem.`,
           },
         ],
       }),
@@ -60,7 +67,7 @@ export async function enhanceWithAI(
     if (Array.isArray(parsed.steps) && parsed.steps.length >= 3) {
       out.steps = parsed.steps.slice(0, 8).map((s) => ({
         id: uid('step'),
-        title: String(s.title ?? 'خطوة').slice(0, 120),
+        title: String(s.title ?? 'Step').slice(0, 120),
         detail: s.detail ? String(s.detail).slice(0, 300) : undefined,
         done: false,
       }));

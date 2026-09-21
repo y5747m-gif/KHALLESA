@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import {
   ArrowLeft,
+  ArrowRight,
   Camera,
   Check,
   ChevronDown,
@@ -15,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Answers, AppSettings, CategoryId, Detection, FamilyMember, KhTask } from '../lib/types';
-import { CATEGORY_META } from '../lib/types';
+import { catLabel, useLang, useStrings } from '../lib/i18n';
 import {
   allCategories,
   buildTaskFromDetection,
@@ -28,7 +29,7 @@ import { recognizeText } from '../lib/ocr';
 import { isVoiceSupported, startVoice } from '../lib/voice';
 import type { VoiceHandle } from '../lib/voice';
 import { isNative } from '../lib/notify';
-import { compressDataUrl, cx, fileToDataUrl, formatShortDateAr } from '../lib/utils';
+import { compressDataUrl, cx, fileToDataUrl, formatShortDate, num } from '../lib/utils';
 import { Chip, SectionTitle, Sheet, TrustBadge } from './ui';
 
 interface AddFlowProps {
@@ -45,6 +46,10 @@ interface AddFlowProps {
 type Stage = 'input' | 'questions' | 'preview';
 
 export default function AddFlow({ open, sessionKey, prefill, mode, members, settings, onClose, onCreate }: AddFlowProps) {
+  const s = useStrings();
+  const lang = useLang();
+  const rtl = lang === 'ar';
+  const FwdIcon = rtl ? ArrowLeft : ArrowRight;
   const [stage, setStage] = useState<Stage>('input');
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
@@ -103,19 +108,20 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
 
   function beginListening(base: string) {
     if (!isVoiceSupported()) {
-      setHint('المتصفح ده مش بيدعم الإدخال الصوتي — اكتب المشكلة كتابة.');
+      setHint(s.micUnsupported);
       return;
     }
     stopListening();
     baseTextRef.current = base;
     const h = startVoice({
+      lang: lang === 'ar' ? 'ar-EG' : 'en-US',
       onResult: (t, isFinal) => {
         setText((baseTextRef.current ? baseTextRef.current + ' ' : '') + t);
         if (isFinal) baseTextRef.current = (baseTextRef.current ? baseTextRef.current + ' ' : '') + t;
       },
       onEnd: () => setListening(false),
-      onError: (m) => {
-        setHint(m);
+      onError: () => {
+        setHint(s.micFail);
         setListening(false);
       },
     });
@@ -123,7 +129,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
       voiceRef.current = h;
       setListening(true);
     } else {
-      setHint('تعذر تشغيل المايك — اكتب المشكلة كتابة.');
+      setHint(s.micFail);
     }
   }
 
@@ -138,7 +144,6 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
   }
 
   async function pickPhoto() {
-    // native camera when running inside the APK
     if (isNative()) {
       try {
         const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera');
@@ -147,9 +152,9 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
           allowEditing: false,
           resultType: CameraResultType.DataUrl,
           source: CameraSource.Prompt,
-          promptLabelHeader: 'صوّر الورقة',
-          promptLabelPhoto: 'من المعرض',
-          promptLabelPicture: 'الكاميرا',
+          promptLabelHeader: s.photoBtn,
+          promptLabelPhoto: 'Gallery',
+          promptLabelPicture: 'Camera',
         });
         if (res.dataUrl) {
           await handlePhotoData(res.dataUrl);
@@ -177,7 +182,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
       const dataUrl = await fileToDataUrl(f);
       await handlePhotoData(dataUrl);
     } catch {
-      setHint('تعذر قراءة الصورة — حاول بصورة تانية.');
+      setHint(s.photoFail);
     }
   }
 
@@ -185,11 +190,11 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
     setOcrRunning(true);
     setOcrProgress(0);
     try {
-      const t = await recognizeText(img, setOcrProgress);
+      const t = await recognizeText(img, lang, setOcrProgress);
       setOcrText(t);
       if (t) setText((prev) => (prev.trim() ? prev : t));
     } catch (err) {
-      setHint(err instanceof Error ? err.message : 'تعذر قراءة الصورة.');
+      setHint(err instanceof Error ? err.message : s.photoFail);
     } finally {
       setOcrRunning(false);
     }
@@ -198,13 +203,13 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
   function analyze() {
     const finalText = text.trim() || ocrText.trim();
     if (!finalText) {
-      setHint('اكتب المشكلة أو صوّر ورقة الأول.');
+      setHint(s.needInputFirst);
       return;
     }
     setHint('');
     setAnalyzing(true);
     setTimeout(() => {
-      const d = detect(finalText);
+      const d = detect(finalText, lang);
       setDetection(d);
       setAnswers({});
       setAnalyzing(false);
@@ -218,8 +223,8 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
     setDetection({
       ...detection,
       category: cat,
-      title: titleForCategory(cat, detection.extracted, finalText),
-      questions: questionsForCategory(cat),
+      title: titleForCategory(cat, detection.extracted, finalText, lang),
+      questions: questionsForCategory(cat, lang),
       confidence: 'high',
     });
     setAnswers({});
@@ -230,7 +235,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
     if (!detection) return;
     const finalText = text.trim() || ocrText.trim();
     const origin: KhTask['origin'] = photo ? 'photo' : 'text';
-    const task = buildTaskFromDetection(finalText, detection, answers, origin, {
+    const task = buildTaskFromDetection(finalText, detection, answers, origin, lang, {
       ownerId: ownerId || undefined,
       assigneeId: assigneeId || undefined,
       followUp: true,
@@ -243,7 +248,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
   async function runAiEnhance() {
     if (!plan || !detection) return;
     if (!settings.apiKey.trim()) {
-      setHint('ضيف مفتاح AI من صفحة "المزيد" عشان نفعّل التحسين.');
+      setHint(s.aiNeedKey);
       return;
     }
     setAiWorking(true);
@@ -268,19 +273,20 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
       setPlan({ ...plan, ...improved, updatedAt: Date.now() });
       setAiApplied(true);
     } else {
-      setHint('تعذر التحسين بالـ AI — الخطة المحلية شغالة وكاملة.');
+      setHint(s.aiFail);
     }
   }
 
   function create() {
     if (!plan) return;
     stopListening();
-    const images = photo ? [{ name: `صورة - ${plan.title}`.slice(0, 60), dataUrl: photo }] : [];
+    const images = photo ? [{ name: `${lang === 'ar' ? 'صورة' : 'Photo'} - ${plan.title}`.slice(0, 60), dataUrl: photo }] : [];
     onCreate(plan, images);
   }
 
   const finalText = text.trim() || ocrText.trim();
   const canAnalyze = Boolean(finalText) && !ocrRunning;
+  const stageIdx = stage === 'input' ? 0 : stage === 'questions' ? 1 : 2;
 
   return (
     <Sheet
@@ -290,16 +296,20 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
         onClose();
       }}
       tall
-      title={stage === 'input' ? 'إيه اللي عايز تخلّصه؟' : stage === 'questions' ? 'سؤالين سريعين' : 'خطتك جاهزة'}
-      subtitle={
-        stage === 'input'
-          ? 'اكتب المشكلة أو صوّر الورقة — واحنا نحوّلها لخطة تنفيذ.'
-          : stage === 'questions'
-            ? 'عشان الخطة تطلع مظبوطة على مقاسك.'
-            : 'راجع الخطة وعدّلها، وبعدين ابدأ المتابعة.'
-      }
+      title={stage === 'input' ? s.addTitle1 : stage === 'questions' ? s.addTitle2 : s.addTitle3}
+      subtitle={stage === 'input' ? s.addSub1 : stage === 'questions' ? s.addSub2 : s.addSub3}
     >
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+
+      {/* step indicator */}
+      <div className="mb-3 flex items-center gap-1.5">
+        {[s.step1, s.step2, s.step3].map((label, i) => (
+          <div key={label} className={cx('flex flex-1 items-center justify-center gap-1 rounded-full py-1.5 text-[11px] font-extrabold', i <= stageIdx ? 'bg-brand-500 text-white' : 'bg-black/5 text-neutral-400 dark:bg-white/10')}>
+            <span className={cx('flex h-5 w-5 items-center justify-center rounded-full text-[10px]', i <= stageIdx ? 'bg-white/25' : 'bg-black/10 dark:bg-white/10')}>{num(i + 1, lang)}</span>
+            {label}
+          </div>
+        ))}
+      </div>
 
       {hint && (
         <div className="mb-3 rounded-xl bg-amber-100 px-3 py-2 text-sm font-bold text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
@@ -314,13 +324,13 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={4}
-              placeholder="مثال: رخصة العربية هتخلص الشهر الجاي..."
+              placeholder={s.textPh}
               className="w-full resize-none rounded-2xl border-2 border-black/10 bg-black/[0.02] p-3.5 pb-12 text-[15px] font-bold outline-none placeholder:text-neutral-400 focus:border-brand-500 dark:border-white/10 dark:bg-white/5"
             />
-            <div className="absolute bottom-2.5 left-2.5 flex gap-2">
+            <div className="absolute bottom-2.5 end-2.5 flex gap-2">
               <button
                 onClick={() => (listening ? stopListening() : beginListening(text))}
-                aria-label="إدخال صوتي"
+                aria-label={s.voiceBtn}
                 className={cx(
                   'flex h-10 w-10 items-center justify-center rounded-full text-white shadow transition',
                   listening ? 'animate-pulse bg-red-500' : 'bg-brand-500 hover:bg-brand-600',
@@ -330,25 +340,25 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
               </button>
               <button
                 onClick={pickPhoto}
-                aria-label="تصوير ورقة"
+                aria-label={s.photoBtn}
                 className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-800 text-white shadow transition hover:bg-neutral-900 dark:bg-white dark:text-neutral-900"
               >
                 <Camera size={18} />
               </button>
             </div>
           </div>
-          {listening && <p className="text-center text-sm font-extrabold text-red-500">سامعك... اتكلم دلوقتي</p>}
+          {listening && <p className="text-center text-sm font-extrabold text-red-500">{s.listening}</p>}
 
           {photo && (
             <div className="relative overflow-hidden rounded-2xl border border-black/10 dark:border-white/10">
-              <img src={photo} alt="الورقة المصورة" className="max-h-52 w-full object-cover" />
+              <img src={photo} alt="paper" className="max-h-52 w-full object-cover" />
               <button
                 onClick={() => {
                   setPhoto(null);
                   setOcrText('');
                 }}
-                aria-label="إزالة الصورة"
-                className="absolute top-2 left-2 rounded-full bg-black/60 p-1.5 text-white"
+                aria-label={s.removePhoto}
+                className="absolute end-2 top-2 rounded-full bg-black/60 p-1.5 text-white"
               >
                 <X size={16} />
               </button>
@@ -356,7 +366,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
                 <div className="absolute inset-x-0 bottom-0 bg-black/70 p-2.5 text-white">
                   <p className="flex items-center gap-1.5 text-xs font-extrabold">
                     <Loader2 size={14} className="animate-spin" />
-                    <span>بنقرا الورقة... {Math.round(ocrProgress * 100)}%</span>
+                    <span>{s.ocrReading} {Math.round(ocrProgress * 100)}%</span>
                   </p>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/20">
                     <div className="h-full bg-brand-500 transition-all" style={{ width: `${ocrProgress * 100}%` }} />
@@ -371,12 +381,12 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
               <div className="mb-1 flex items-center justify-between">
                 <p className="flex items-center gap-1 text-xs font-extrabold text-neutral-500">
                   <ScanText size={14} />
-                  <span>النص المستخرج من الصورة</span>
+                  <span>{s.ocrTitle}</span>
                 </p>
                 {photo && (
                   <button onClick={() => runOcr(photo)} className="flex items-center gap-1 text-xs font-bold text-brand-600">
                     <RefreshCw size={12} />
-                    <span>إعادة القراءة</span>
+                    <span>{s.ocrRetry}</span>
                   </button>
                 )}
               </div>
@@ -392,16 +402,16 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
             {analyzing ? (
               <span className="flex items-center gap-2">
                 <Loader2 size={20} className="animate-spin" />
-                <span>بنفهم المشكلة...</span>
+                <span>{s.analyzing}</span>
               </span>
             ) : (
               <span className="flex items-center gap-2">
-                <span>حلّلها واعملي خطة</span>
-                <ArrowLeft size={20} />
+                <span>{s.analyzeBtn}</span>
+                <FwdIcon size={20} />
               </span>
             )}
           </button>
-          <p className="text-center text-xs text-neutral-400">صوّرت فاتورة؟ إيصال؟ خطاب رفض؟ ارفعها وخلّصها هيقراها.</p>
+          <p className="text-center text-xs text-neutral-400">{s.photoHint}</p>
         </div>
       )}
 
@@ -410,14 +420,14 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
           <div className="rounded-2xl bg-brand-50 p-3 dark:bg-brand-700/15">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-extrabold">
-                <span>فهمناها: </span>
-                <span className="text-brand-700 dark:text-brand-400">{CATEGORY_META[detection.category].label}</span>
+                <span>{s.understood} </span>
+                <span className="text-brand-700 dark:text-brand-400">{catLabel(detection.category, lang)}</span>
                 {detection.deadline && (
-                  <span className="text-neutral-500"> — آخر موعد: {formatShortDateAr(detection.deadline)}</span>
+                  <span className="text-neutral-500"> — {s.deadlineIs} {formatShortDate(detection.deadline, lang)}</span>
                 )}
               </p>
               <button onClick={() => setShowCats(!showCats)} className="flex shrink-0 items-center gap-1 text-xs font-extrabold text-brand-600">
-                <span>تغيير</span>
+                <span>{s.change}</span>
                 <ChevronDown size={14} className={cx('transition', showCats && 'rotate-180')} />
               </button>
             </div>
@@ -425,7 +435,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {allCategories().map((c) => (
                   <Chip key={c} selected={c === detection.category} onClick={() => changeCategory(c)}>
-                    {CATEGORY_META[c].label}
+                    {catLabel(c, lang)}
                   </Chip>
                 ))}
               </div>
@@ -457,7 +467,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
           {members.length > 1 && (
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <SectionTitle icon={User} title="المهمة تخص مين؟" />
+                <SectionTitle icon={User} title={s.aboutWhom} />
                 <select
                   value={ownerId}
                   onChange={(e) => setOwnerId(e.target.value)}
@@ -469,7 +479,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
                 </select>
               </div>
               <div>
-                <SectionTitle icon={User} title="المسؤول عنها؟" />
+                <SectionTitle icon={User} title={s.responsible} />
                 <select
                   value={assigneeId}
                   onChange={(e) => setAssigneeId(e.target.value)}
@@ -483,19 +493,25 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
             </div>
           )}
 
+          <button
+            onClick={goPreview}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3 text-base font-black text-white shadow-lg transition hover:bg-brand-600"
+          >
+            <span>{s.makePlan}</span>
+            <FwdIcon size={20} />
+          </button>
           <div className="flex gap-2">
             <button
               onClick={() => setStage('input')}
-              className="rounded-2xl bg-black/5 px-5 py-3 text-sm font-extrabold text-neutral-600 dark:bg-white/10 dark:text-neutral-300"
+              className="rounded-2xl bg-black/5 px-5 py-2.5 text-sm font-extrabold text-neutral-600 dark:bg-white/10 dark:text-neutral-300"
             >
-              رجوع
+              {s.back}
             </button>
             <button
               onClick={goPreview}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3 text-base font-black text-white shadow-lg transition hover:bg-brand-600"
+              className="flex-1 rounded-2xl border-2 border-dashed border-neutral-300 py-2.5 text-sm font-extrabold text-neutral-500 dark:border-white/20 dark:text-neutral-400"
             >
-              <span>اعملي خطة التنفيذ</span>
-              <ArrowLeft size={20} />
+              {s.skipQs}
             </button>
           </div>
         </div>
@@ -513,21 +529,21 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
           <div className="flex items-center gap-2">
             <TrustBadge level={plan.trust} />
             <span className="text-xs font-bold text-neutral-500">
-              {plan.steps.length.toLocaleString('ar-EG')} خطوات — {plan.docs.length.toLocaleString('ar-EG')} مستندات — {plan.sources.length.toLocaleString('ar-EG')} مصادر
+              {num(plan.steps.length, lang)} • {num(plan.docs.length, lang)} • {num(plan.sources.length, lang)}
             </span>
           </div>
 
           <div>
-            <SectionTitle title="الخطوات" />
+            <SectionTitle title={s.stepsTitle} />
             <ol className="space-y-1.5">
-              {plan.steps.map((s, i) => (
-                <li key={s.id} className="flex gap-2.5 rounded-xl bg-black/[0.03] p-2.5 text-sm dark:bg-white/5">
+              {plan.steps.map((stp, i) => (
+                <li key={stp.id} className="flex gap-2.5 rounded-xl bg-black/[0.03] p-2.5 text-sm dark:bg-white/5">
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-black text-white dark:bg-neutral-200 dark:text-neutral-900">
-                    {(i + 1).toLocaleString('ar-EG')}
+                    {num(i + 1, lang)}
                   </span>
                   <div>
-                    <p className="font-extrabold">{s.title}</p>
-                    {s.detail && <p className="text-xs text-neutral-500 dark:text-neutral-400">{s.detail}</p>}
+                    <p className="font-extrabold">{stp.title}</p>
+                    {stp.detail && <p className="text-xs text-neutral-500 dark:text-neutral-400">{stp.detail}</p>}
                   </div>
                 </li>
               ))}
@@ -535,7 +551,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
           </div>
 
           <div>
-            <SectionTitle title="المستندات المطلوبة" />
+            <SectionTitle title={s.docsNeeded} />
             <div className="flex flex-wrap gap-1.5">
               {plan.docs.map((d) => (
                 <span key={d.id} className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-extrabold text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
@@ -548,7 +564,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
           {photo && (
             <div className="flex items-center gap-2 rounded-xl bg-black/[0.03] p-2.5 text-xs font-bold text-neutral-500 dark:bg-white/5">
               <ImageIcon size={16} />
-              <span>الصورة المرفقة هتتحفظ في الوثائق وترتبط بالمسار ده.</span>
+              <span>{s.photoSavedNote}</span>
             </div>
           )}
 
@@ -560,17 +576,17 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
             {aiWorking ? (
               <span className="flex items-center gap-2">
                 <Loader2 size={16} className="animate-spin" />
-                <span>بنحسّن الخطة بالـ AI...</span>
+                <span>{s.aiWorking}</span>
               </span>
             ) : aiApplied ? (
               <span className="flex items-center gap-2">
                 <Check size={16} />
-                <span>اتحسنت بالـ AI</span>
+                <span>{s.aiDone}</span>
               </span>
             ) : (
               <span className="flex items-center gap-2">
                 <Sparkles size={16} />
-                <span>حسّن الخطة بالـ AI (اختياري)</span>
+                <span>{s.aiEnhance}</span>
               </span>
             )}
           </button>
@@ -580,13 +596,13 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
               onClick={() => setStage('questions')}
               className="rounded-2xl bg-black/5 px-5 py-3 text-sm font-extrabold text-neutral-600 dark:bg-white/10 dark:text-neutral-300"
             >
-              رجوع
+              {s.back}
             </button>
             <button
               onClick={create}
               className="flex-1 rounded-2xl bg-brand-500 py-3 text-base font-black text-white shadow-lg transition hover:bg-brand-600"
             >
-              ابدأ المتابعة
+              {s.startFollow} 🚀
             </button>
           </div>
         </div>

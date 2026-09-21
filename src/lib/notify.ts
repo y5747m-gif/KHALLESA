@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import type { Lang } from './i18n';
 import type { KhTask } from './types';
 import { daysUntil, parseISODate } from './utils';
 
@@ -38,7 +39,7 @@ export async function ensureNotificationPermission(enabled: boolean): Promise<bo
 }
 
 /** Schedule native reminders: day-before 9AM + deadline-day 9AM. No-op on web. */
-export async function scheduleNativeReminders(task: KhTask): Promise<void> {
+export async function scheduleNativeReminders(task: KhTask, lang: Lang = 'ar'): Promise<void> {
   try {
     if (!isNative() || !task.deadline || task.status !== 'active') return;
     const { LocalNotifications } = await import('@capacitor/local-notifications');
@@ -51,14 +52,15 @@ export async function scheduleNativeReminders(task: KhTask): Promise<void> {
       dt.setHours(9, 0, 0, 0);
       return dt;
     };
+    const app = lang === 'ar' ? 'خَلِّصها' : 'KHALLESA';
     const now = new Date();
     const notifs = [];
     const before = at(-1);
     if (before.getTime() > now.getTime()) {
       notifs.push({
         id: idBase + 1,
-        title: 'خَلِّصها — بكرة آخر موعد ⏰',
-        body: `${task.title}: باقي يوم واحد`,
+        title: lang === 'ar' ? `${app} — بكرة آخر موعد ⏰` : `${app} — deadline tomorrow ⏰`,
+        body: lang === 'ar' ? `${task.title}: باقي يوم واحد` : `${task.title}: 1 day left`,
         schedule: { at: before },
         smallIcon: 'ic_launcher',
       });
@@ -67,7 +69,7 @@ export async function scheduleNativeReminders(task: KhTask): Promise<void> {
     if (day.getTime() > now.getTime()) {
       notifs.push({
         id: idBase + 2,
-        title: 'خَلِّصها — النهاردة آخر موعد 🔴',
+        title: lang === 'ar' ? `${app} — النهاردة آخر موعد 🔴` : `${app} — deadline today 🔴`,
         body: task.title,
         schedule: { at: day },
         smallIcon: 'ic_launcher',

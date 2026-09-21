@@ -8,8 +8,10 @@ export function defaultSettings(): AppSettings {
   return {
     displayName: '',
     country: 'مصر',
+    lang: 'ar',
     darkMode: 'system',
     notificationsEnabled: true,
+    onboarded: false,
     apiKey: '',
     apiBase: 'https://api.openai.com/v1',
     apiModel: 'gpt-4o-mini',
@@ -18,9 +20,9 @@ export function defaultSettings(): AppSettings {
 
 function seedTasks(): KhTask[] {
   const t1in = 'رخصة العربية هتخلص الشهر الجاي';
-  const d1 = detect(t1in);
+  const d1 = detect(t1in, 'ar');
   d1.deadline = addDaysISO(todayISO(), 24);
-  const t1 = buildTaskFromDetection(t1in, d1, { licenseType: 'تسيير ملاكي', unit: 'مدينة نصر' }, 'text', {
+  const t1 = buildTaskFromDetection(t1in, d1, { licenseType: 'تسيير ملاكي', unit: 'مدينة نصر' }, 'text', 'ar', {
     demo: true,
   });
   t1.steps[0].done = true;
@@ -30,8 +32,8 @@ function seedTasks(): KhTask[] {
   t1.updatedAt = Date.now() - 86400000;
 
   const t2in = 'فاتورة الكهرباء آخر موعد بعد 5 أيام';
-  const d2 = detect(t2in);
-  const t2 = buildTaskFromDetection(t2in, d2, { billType: 'كهرباء' }, 'text', { demo: true });
+  const d2 = detect(t2in, 'ar');
+  const t2 = buildTaskFromDetection(t2in, d2, { billType: 'كهرباء' }, 'text', 'ar', { demo: true });
   t2.createdAt = Date.now() - 86400000;
   t2.updatedAt = Date.now() - 86400000;
 
@@ -84,16 +86,15 @@ export function saveState(s: AppState): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(s));
   } catch {
-    // quota exceeded (too many photos) — state stays in memory for this session
     console.warn('KHALLESA: storage full, running in-memory');
   }
 }
 
-export function clearAllData(): AppState {
+export function clearAllData(keepSettings?: Partial<AppSettings>): AppState {
   try {
     localStorage.removeItem(KEY);
   } catch {
     /* noop */
   }
-  return { tasks: [], docs: [], members: [], events: [], settings: defaultSettings(), seeded: true };
+  return { tasks: [], docs: [], members: [], events: [], settings: { ...defaultSettings(), ...keepSettings, onboarded: true }, seeded: true };
 }

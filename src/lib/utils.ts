@@ -1,4 +1,6 @@
 // ─── KHALLESA utils ────────────────────────────────────────────────
+import { STR } from './i18n';
+import type { Lang } from './i18n';
 
 export function uid(prefix = 'id'): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -6,6 +8,15 @@ export function uid(prefix = 'id'): string {
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ');
+}
+
+/** locale-aware number: ١٢٣ in Arabic, 123 in English */
+export function num(n: number, lang: Lang = 'ar'): string {
+  return n.toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US');
+}
+
+function localeOf(lang: Lang): string {
+  return lang === 'ar' ? 'ar-EG' : 'en-GB';
 }
 
 // ─── dates ───────────────────────────────────────────────────────────
@@ -44,42 +55,57 @@ export function daysUntil(iso?: string, from: Date = new Date()): number | null 
   return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
-export function formatDateAr(iso?: string): string {
+export function formatDate(iso: string | undefined, lang: Lang = 'ar'): string {
   const d = parseISODate(iso);
-  if (!d) return 'بدون موعد';
-  return new Intl.DateTimeFormat('ar-EG', {
+  if (!d) return STR[lang].noDate;
+  return new Intl.DateTimeFormat(localeOf(lang), {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   }).format(d);
 }
 
-export function formatShortDateAr(iso?: string): string {
+export function formatShortDate(iso: string | undefined, lang: Lang = 'ar'): string {
   const d = parseISODate(iso);
-  if (!d) return 'بدون موعد';
-  return new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'long' }).format(d);
+  if (!d) return STR[lang].noDate;
+  return new Intl.DateTimeFormat(localeOf(lang), { day: 'numeric', month: 'long' }).format(d);
 }
 
-export function timeAgoAr(ts: number): string {
+export function timeAgo(ts: number, lang: Lang = 'ar'): string {
+  const s = STR[lang];
   const diff = Date.now() - ts;
   const min = Math.floor(diff / 60000);
-  if (min < 1) return 'الآن';
-  if (min < 60) return `منذ ${min.toLocaleString('ar-EG')} د`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `منذ ${h.toLocaleString('ar-EG')} س`;
-  const days = Math.floor(h / 24);
-  if (days < 30) return `منذ ${days.toLocaleString('ar-EG')} يوم`;
-  return new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'short' }).format(new Date(ts));
+  if (min < 1) return s.now;
+  if (lang === 'ar') {
+    if (min < 60) return `${s.sinceWord} ${num(min, lang)} ${s.minAgo}`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${s.sinceWord} ${num(h, lang)} ${s.hourAgo}`;
+    const days = Math.floor(h / 24);
+    if (days < 30) return `${s.sinceWord} ${num(days, lang)} ${s.dayAgo}`;
+  } else {
+    if (min < 60) return `${min}${s.minAgo} ago`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h}${s.hourAgo} ago`;
+    const days = Math.floor(h / 24);
+    if (days < 30) return `${days}${s.dayAgo} ago`;
+  }
+  return new Intl.DateTimeFormat(localeOf(lang), { day: 'numeric', month: 'short' }).format(new Date(ts));
 }
 
-export function daysLeftText(days: number | null): string {
-  if (days === null) return 'بدون موعد نهائي';
-  if (days < 0) return `متأخرة بـ ${Math.abs(days).toLocaleString('ar-EG')} يوم`;
-  if (days === 0) return 'آخر موعد النهاردة!';
-  if (days === 1) return 'باقي يوم واحد';
-  if (days === 2) return 'باقي يومين';
-  if (days <= 10) return `باقي ${days.toLocaleString('ar-EG')} أيام`;
-  return `باقي ${days.toLocaleString('ar-EG')} يوم`;
+export function daysLeftText(days: number | null, lang: Lang = 'ar'): string {
+  const s = STR[lang];
+  if (days === null) return s.noDeadline;
+  if (days < 0) {
+    const n = Math.abs(days);
+    return lang === 'ar' ? `${s.overdueBy} ${num(n, lang)} ${s.daysUnit}` : `${s.overdueBy} ${n} ${s.daysUnit}`;
+  }
+  if (days === 0) return s.lastDayToday;
+  if (days === 1) return s.oneDayLeft;
+  if (days === 2) return s.twoDaysLeft;
+  if (lang === 'ar') {
+    return days <= 10 ? `${s.daysLeftN} ${num(days, lang)} ${s.daysLeftDays}` : `${s.daysLeftN} ${num(days, lang)} ${s.daysUnit}`;
+  }
+  return `${days} ${s.daysLeftDays}`;
 }
 
 // ─── files / images ──────────────────────────────────────────────────
@@ -88,7 +114,7 @@ export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error('تعذر قراءة الملف'));
+    r.onerror = () => reject(new Error('file'));
     r.readAsDataURL(file);
   });
 }

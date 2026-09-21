@@ -28,6 +28,7 @@
 | 📄 ملف المطالبة | للضمان والإرجاع — مشاركة/تحميل |
 | 🔔 المتابعة | تنبيهات قبل المواعيد (ويب + تنبيهات نظام داخل التطبيق) |
 | 🌙 الوضع الليلي | فاتح / غامق / تلقائي |
+| 🌍 اللغة | العربية (RTL) + English (LTR) — من شاشة الترحيب أو صفحة "المزيد" |
 
 ## 📱 تحميل التطبيق (APK)
 
@@ -64,6 +65,13 @@ npx cap open android   # ثم Run من Android Studio
 ## 🗺️ خارطة الطريق (V2)
 
 مشاركة عائلية حقيقية (مزامنة) ← بحث دلالي في المستندات ← خدمات محلية ← Marketplace للخدمات.
+
+## 🌍 English
+
+**KHALLESA** turns any problem (typed, spoken, or snapped) into a real action plan: steps, documents, official sources, consequences of ignoring — then follows up until done.
+
+- Full bilingual UI: Arabic (RTL) + English (LTR) — pick at onboarding or from More → Language
+- The engine understands both Egyptian Arabic and English input and builds plans in your language
 
 ---
 
