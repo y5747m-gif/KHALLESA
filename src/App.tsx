@@ -10,6 +10,7 @@ import {
   scheduleNativeReminders,
 } from './lib/notify';
 import { LangProvider, STR } from './lib/i18n';
+import { useServiceWorker } from './lib/install';
 import { cx, uid } from './lib/utils';
 import Home from './components/Home';
 import type { AddRequest } from './components/Home';
@@ -35,6 +36,7 @@ export default function App() {
   const [assistantSession, setAssistantSession] = useState(0);
   const [toast, setToast] = useState<{ id: string; msg: string } | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
+  const { updateReady, applyUpdate } = useServiceWorker();
 
   const lang = state.settings.lang;
   const s = STR[lang];
@@ -304,6 +306,17 @@ export default function App() {
   const me = state.members.find((m) => m.isMe) ?? state.members[0];
   const userName = state.settings.displayName.trim() || (me && !me.isMe ? me.name : '');
 
+  // deep links used by the installed app shortcuts (?action=new | ?action=ai)
+  useEffect(() => {
+    if (!state.settings.onboarded) return;
+    const action = new URLSearchParams(window.location.search).get('action');
+    if (!action) return;
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    if (action === 'new') openAdd();
+    if (action === 'ai') openAssistant();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.settings.onboarded]);
+
   // ── first run ─────────────────────────────────────────────────
   if (!state.settings.onboarded) {
     return (
@@ -374,6 +387,8 @@ export default function App() {
                 tasks={state.tasks}
                 docsCount={state.docs.length}
                 hasDemo={state.tasks.some((t) => t.demo)}
+                updateReady={updateReady}
+                applyUpdate={applyUpdate}
                 onSettings={patchSettings}
                 onRemoveDemo={removeDemo}
                 onClearAll={clearAll}

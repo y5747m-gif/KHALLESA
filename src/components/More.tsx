@@ -23,6 +23,7 @@ import { SOURCES, srcDesc, srcName } from '../lib/sources';
 import { ensureNotificationPermission, pingNow } from '../lib/notify';
 import { cx, num, timeAgo } from '../lib/utils';
 import { Chip, EmptyState, SectionTitle, TrustBadge } from './ui';
+import { InstallCard } from './InstallApp';
 
 interface MoreProps {
   settings: AppSettings;
@@ -30,12 +31,25 @@ interface MoreProps {
   tasks: KhTask[];
   docsCount: number;
   hasDemo: boolean;
+  updateReady?: boolean;
+  applyUpdate?: () => void;
   onSettings: (patch: Partial<AppSettings>) => void;
   onRemoveDemo: () => void;
   onClearAll: () => void;
 }
 
-export default function More({ settings, events, tasks, docsCount, hasDemo, onSettings, onRemoveDemo, onClearAll }: MoreProps) {
+export default function More({
+  settings,
+  events,
+  tasks,
+  docsCount,
+  hasDemo,
+  updateReady,
+  applyUpdate,
+  onSettings,
+  onRemoveDemo,
+  onClearAll,
+}: MoreProps) {
   const s = useStrings();
   const lang = useLang();
   const rtl = lang === 'ar';
@@ -119,6 +133,9 @@ export default function More({ settings, events, tasks, docsCount, hasDemo, onSe
           </Chip>
         </div>
       </div>
+
+      {/* install as an app (PWA prompt / APK download) */}
+      <InstallCard updateReady={updateReady} applyUpdate={applyUpdate} />
 
       {/* notifications */}
       <div className="rounded-3xl bg-white p-4 shadow-sm dark:bg-neutral-900">

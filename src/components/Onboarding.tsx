@@ -10,9 +10,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { Lang } from '../lib/i18n';
-import { useStrings } from '../lib/i18n';
+import { APP_VERSION, useStrings } from '../lib/i18n';
 import { ensureNotificationPermission } from '../lib/notify';
-import { cx, num } from '../lib/utils';
+import { cx } from '../lib/utils';
 
 interface OnboardingProps {
   lang: Lang;
@@ -140,7 +140,7 @@ export default function Onboarding({ lang, onLang, onDone }: OnboardingProps) {
         )}
 
         <p className="mt-4 text-[11px] font-bold text-neutral-400">
-          {s.slogan} • {num(1, lang) === '١' ? 'الإصدار ١٫١' : 'v1.1'}
+          {s.slogan} • {lang === 'ar' ? `الإصدار ${APP_VERSION}` : `v${APP_VERSION}`}
         </p>
       </div>
     </div>
