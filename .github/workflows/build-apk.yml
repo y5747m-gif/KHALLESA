@@ -132,23 +132,24 @@ jobs:
           elif [ -f android/keystore/release.p12 ] && [ -f android/keystore.properties ]; then
             echo "KEY_SOURCE=in-repo distribution key"
           else
-            echo "KEY_SOURCE="
-            echo "::error::Signing material missing on the runner — p12=$([ -f android/keystore/release.p12 ] && echo yes || echo no) props=$([ -f android/keystore.properties ] && echo yes || echo no)"
-            ls -la android/ | head -20
+            KEY_SOURCE=""
+            echo "::warning::ks branch=NONE p12=$([ -f android/keystore/release.p12 ] && echo yes || echo no) props=$([ -f android/keystore.properties ] && echo yes || echo no)"
+            ls -la android/ android/keystore/ 2>&1 | head -30
           fi
+          echo "::warning::ks KEY_SOURCE=[$KEY_SOURCE] pwd=$(pwd) sha=$(sha256sum android/keystore/release.p12 2>/dev/null | cut -c1-16 || echo none)"
 
           # Preflight: the key store must be readable by the JDK that signs the
           # app, otherwise `assembleRelease` dies with a cryptic error.
           if [ -n "$KEY_SOURCE" ]; then
+            STORE_PASS="$(grep '^storePassword=' android/keystore.properties | cut -d= -f2-)"
             if keytool -list -keystore android/keystore/release.p12 -storetype PKCS12 \
-                 -storepass "$(grep '^storePassword=' android/keystore.properties | cut -d= -f2-)" > "$RUNNER_TEMP/keytool.txt" 2>&1; then
+                 -storepass "$STORE_PASS" > "$RUNNER_TEMP/keytool.txt" 2>&1; then
               echo "SIGNING=release" >> "$GITHUB_ENV"
-              echo "✓ signing with the $KEY_SOURCE"
+              echo "::warning::ks keytool=OK - signing a release build (alias $(grep '^keyAlias=' android/keystore.properties | cut -d= -f2-))"
               grep -E 'Alias|Entry type|Valid' "$RUNNER_TEMP/keytool.txt" | head -5 || true
             else
               echo "SIGNING=debug" >> "$GITHUB_ENV"
-              echo "::warning::The key store could not be read by keytool — falling back to a debug build."
-              cat "$RUNNER_TEMP/keytool.txt"
+              echo "::warning::ks keytool=FAILED - debug build instead. keytool said: $(tr '\n' ' ' < "$RUNNER_TEMP/keytool.txt" | cut -c1-400)"
             fi
           else
             echo "SIGNING=debug" >> "$GITHUB_ENV"
