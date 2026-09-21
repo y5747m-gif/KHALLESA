@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 import type { CategoryId, PathId, TrustLevel } from './types';
 
 export type Lang = 'ar' | 'en';
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.0';
 
 // ─── Arabic (source of truth for keys) ───────────────────────────────
 const ar = {
@@ -242,6 +242,29 @@ const ar = {
   privacyNote: 'بياناتك محفوظة على جهازك فقط — مفيش سيرفرات في النسخة دي.',
   appName: 'خَلِّصها KHALLESA',
   madeIn: 'صُنع بحب في مصر 🇪🇬',
+  // install as app
+  installTitle: 'ثبّت التطبيق على موبايلك 📲',
+  installSub: 'خَلِّصها على الشاشة الرئيسية — يفتح كتطبيق وبنفس المميزات، وبيشتغل أوفلاين.',
+  installBtn: 'تثبيت التطبيق',
+  installBtnShort: 'ثبّت',
+  installBannerTitle: 'خلّي خَلِّصها على شاشتك الرئيسية',
+  installBannerSub: 'افتحه كتطبيق من غير متصفح — نفس المميزات وبياناتك على جهازك.',
+  installLater: 'لاحقًا',
+  installDone: 'متثبّت عندك ✅',
+  installDoneHint: 'خَلِّصها شغال كتطبيق على جهازك — افتحه من الشاشة الرئيسية.',
+  installNative: 'إنت جوه تطبيق خَلِّصها ✅',
+  installNativeHint: 'النسخة دي مثبّتة على جهازك — كل المميزات شغالة أوفلاين.',
+  installAndroidHint: 'على أندرويد: افتح قائمة المتصفح ⋮ واختار «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».',
+  installIosHint: 'على iPhone: زر المشاركة ↑ ← «إضافة إلى الشاشة الرئيسية» ← «إضافة» (لازم Safari).',
+  installManualHint: 'المتصفح ده مش بيدعم التثبيت المباشر — حمّل ملف APK أو استخدم قائمة المتصفح.',
+  installApkTitle: 'تحميل APK لأندرويد',
+  installApkHint: 'ملف تثبيت أندرويد جاهز بنفس المميزات: خطط، OCR، تنبيهات، وثائق — كله على جهازك.',
+  installApkBtn: 'حمّل ملف APK',
+  installApkNote: 'بعد التحميل: افتح الملف ← «تثبيت» ← لو ظهر تحذير «مصدر غير معروف» سمح بيه لمرة واحدة.',
+  installAllReleases: 'كل الإصدارات',
+  installOffline: 'بيشتغل بدون إنترنت بعد أول مرة ✅',
+  updateReady: 'فيه نسخة جديدة من خَلِّصها',
+  updateBtn: 'تحديث دلوقتي',
   // onboarding
   obLangT: 'اختار لغتك / Choose language',
   ob1T: 'عندك حاجة عايز تخلّصها؟',
@@ -524,6 +547,29 @@ const en: Record<SKey, string> = {
   privacyNote: 'Your data stays on your device only — no servers in this version.',
   appName: 'KHALLESA خَلِّصها',
   madeIn: 'Made with love in Egypt 🇪🇬',
+  // install as app
+  installTitle: 'Install the app on your phone 📲',
+  installSub: 'Put KHALLESA on your home screen — it opens as an app, with the same features, and works offline.',
+  installBtn: 'Install app',
+  installBtnShort: 'Install',
+  installBannerTitle: 'Keep KHALLESA on your home screen',
+  installBannerSub: 'Open it as an app, no browser — same features, your data stays on your device.',
+  installLater: 'Later',
+  installDone: 'Already installed ✅',
+  installDoneHint: 'KHALLESA runs as an app on your device — launch it from your home screen.',
+  installNative: 'You are inside the KHALLESA app ✅',
+  installNativeHint: 'This build is installed on your device — every feature works offline.',
+  installAndroidHint: 'On Android: open the browser menu ⋮ and pick “Install app” or “Add to Home screen”.',
+  installIosHint: 'On iPhone: Share ↑ → “Add to Home Screen” → “Add” (Safari only).',
+  installManualHint: 'This browser has no direct install — grab the APK file or use the browser menu.',
+  installApkTitle: 'Download Android APK',
+  installApkHint: 'A ready-to-install Android build with the same features: plans, OCR, reminders, vault — all on your device.',
+  installApkBtn: 'Download APK',
+  installApkNote: 'After download: open the file → “Install” → if warned about unknown sources, allow it once.',
+  installAllReleases: 'All releases',
+  installOffline: 'Works with no connection after the first load ✅',
+  updateReady: 'A new version of KHALLESA is ready',
+  updateBtn: 'Update now',
   obLangT: 'اختار لغتك / Choose language',
   ob1T: 'Something to get done?',
   ob1D: 'Type it, say it, or snap it — KHALLESA turns it into an action plan with steps, documents & official sources.',

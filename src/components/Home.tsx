@@ -20,6 +20,7 @@ import type { Lang } from '../lib/i18n';
 import { nextStep, progressOf } from '../lib/engine';
 import { cx, daysLeftText, formatShortDate, num } from '../lib/utils';
 import { Chip, EmptyState, ProgressBar, SectionTitle, Sheet, TrustBadge } from './ui';
+import { InstallBanner, InstallButton } from './InstallApp';
 
 export interface AddRequest {
   prefill?: string;
@@ -97,6 +98,7 @@ export default function Home({ userName, ranked, onAdd, onOpenTask, onOpenAssist
           </h1>
           <p className="text-sm font-bold text-brand-700 dark:text-brand-500">{s.slogan}</p>
         </div>
+        <InstallButton />
       </header>
 
       {/* hero input */}
@@ -130,6 +132,9 @@ export default function Home({ userName, ranked, onAdd, onOpenTask, onOpenAssist
           </button>
         </div>
       </div>
+
+      {/* install-as-app nudge (web only, dismissible) */}
+      <InstallBanner />
 
       {/* counters */}
       <div className="grid grid-cols-4 gap-2">

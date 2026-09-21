@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 jobs:
@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -27,11 +29,22 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Generate PWA icons
+        run: npm run icons
+
       - name: Build web app
         run: npm run build
 
       - name: Sync Capacitor
         run: npx cap sync android
+
+      - name: Sync app version from package.json
+        run: |
+          V=$(node -p "require('./package.json').version")
+          C=$(git rev-list --count HEAD)
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$V\"/" android/app/build.gradle
+          sed -i "s/versionCode [0-9][0-9]*/versionCode $C/" android/app/build.gradle
+          grep -E "versionName|versionCode" android/app/build.gradle
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -54,22 +67,45 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee "$RUNNER_TEMP/gradle.log"
           test "${PIPESTATUS[0]}" -eq 0
 
+      - name: Package APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk khallesa.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: khallesa-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: khallesa-apk
+          path: khallesa.apk
           retention-days: 30
 
-      - name: Rename for release
+      # Rolling release → stable download URL used by the in-app "حمّل APK" button:
+      # https://github.com/y5747m-gif/KHALLESA/releases/download/latest-apk/khallesa.apk
+      - name: Publish rolling APK release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          gh release delete latest-apk --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest-apk khallesa.apk \
+            --title "خَلِّصها APK — آخر بناء (v$V)" \
+            --prerelease \
+            --notes "آخر نسخة APK مبنية تلقائيًا من الفرع الرئيسي (v$V).
+
+          ثبّتها على أندرويد: حمّل \`khallesa.apk\` ← افتح الملف ← «تثبيت» ← سمح بـ«مصدر غير معروف» لمرة واحدة.
+
+          كل البيانات محفوظة على جهازك فقط."
+
+      - name: Rename for versioned release
         if: startsWith(github.ref, 'refs/tags/v')
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk khallesa-${{ github.ref_name }}.apk
+        run: cp khallesa.apk khallesa-${{ github.ref_name }}.apk
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: khallesa-${{ github.ref_name }}.apk
+          files: |
+            khallesa.apk
+            khallesa-${{ github.ref_name }}.apk
           generate_release_notes: true
 
       - name: Upload gradle log on failure
@@ -78,37 +114,3 @@ jobs:
         with:
           name: gradle-log
           path: ${{ runner.temp }}/gradle.log
-          retention-days: 7
-
-      - name: Report failure to debug issue
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const logPath = `${process.env.RUNNER_TEMP}/gradle.log`;
-            let report = '(no log file)';
-            try {
-              const lines = fs.readFileSync(logPath, 'utf8').split('\n');
-              const out = [];
-              lines.forEach((l, i) => {
-                if (/What went wrong|Execution failed for task|> Task .+ FAILED|Caused by:|\berror:|FAILED$|BUILD FAILED|invalid (source|target) release|cannot find symbol|package .* does not exist|Duplicate /.test(l)) {
-                  out.push(`--- line ${i} ---`);
-                  for (let j = Math.max(0, i - 1); j <= Math.min(lines.length - 1, i + 6); j++) out.push(lines[j]);
-                }
-              });
-              report = out.join('\n').slice(0, 20000) || lines.slice(-120).join('\n');
-            } catch (e) {
-              report = `(could not read log: ${e.message})`;
-            }
-            const title = 'CI debug: APK build failure';
-            const { owner, repo } = context.repo;
-            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
-            const body = `## Build failed\nRun: ${runUrl}\nBranch: \`${context.ref}\` @ \`${context.sha.slice(0, 7)}\`\n\n<details><summary>failure lines</summary>\n\n\`\`\`\n${report}\n\`\`\`\n</details>`;
-            const { data: issues } = await github.rest.issues.listForRepo({ owner, repo, state: 'open', per_page: 50 });
-            const existing = issues.find((i) => i.title === title);
-            if (existing) {
-              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
-            } else {
-              await github.rest.issues.create({ owner, repo, title, body });
-            }
