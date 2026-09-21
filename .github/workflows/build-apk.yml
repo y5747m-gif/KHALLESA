@@ -34,15 +34,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Inspect signing material
+      # The signing key lives in the repository. These probes report (through
+      # step outputs → a warning annotation, because runner logs are not always
+      # downloadable) whether anything between checkout and signing removes it,
+      # and the signing step restores it from git when that happens.
+      - name: Probe signing material (after checkout)
+        id: ksprobe
         run: |
-          echo "HEAD: $(git rev-parse --short HEAD)"
-          echo "-- git ls-files (keystore):"
-          git ls-files | grep -i keystore || echo "   (none tracked)"
-          echo "-- on disk:"
-          ls -l android/keystore.properties android/keystore/ 2>&1 || true
-          echo "-- ignored?"
-          git check-ignore -v android/keystore/release.p12 android/keystore.properties || echo "   (not ignored)"
+          P12=$(git ls-files --error-unmatch android/keystore/release.p12 >/dev/null 2>&1 && echo tracked || echo untracked)
+          DISK=$([ -f android/keystore/release.p12 ] && echo on-disk || echo MISSING)
+          echo "state=$P12/$DISK" >> "$GITHUB_OUTPUT"
+          echo "::warning::keystore after checkout: $P12/$DISK (HEAD $(git rev-parse --short HEAD))"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -90,6 +92,19 @@ jobs:
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0" 2>&1 | tail -3 || true
+
+      - name: Restore signing material if missing
+        run: |
+          if [ ! -f android/keystore/release.p12 ]; then
+            echo "::warning::keystore/release.p12 was gone before signing (after checkout: ${{ steps.ksprobe.outputs.state }}) — restoring from HEAD"
+            mkdir -p android/keystore
+            git show HEAD:android/keystore/release.p12 > android/keystore/release.p12
+          fi
+          if [ ! -f android/keystore.properties ]; then
+            echo "::warning::keystore.properties was gone before signing — restoring from HEAD"
+            git show HEAD:android/keystore.properties > android/keystore.properties
+          fi
+          echo "::warning::keystore before signing: p12=$([ -f android/keystore/release.p12 ] && stat -c%s android/keystore/release.p12 || echo MISSING) bytes, props=$([ -f android/keystore.properties ] && echo present || echo MISSING)"
 
       - name: Prepare release signing key
         env:
