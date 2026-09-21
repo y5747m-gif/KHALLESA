@@ -52,7 +52,7 @@ npx cap sync android
 npx cap open android   # ثم Run من Android Studio
 ```
 
-يتطلب: Android Studio + JDK 17.
+يتطلب: Android Studio + JDK 21.
 
 ## 🧠 ملاحظات تقنية
 
