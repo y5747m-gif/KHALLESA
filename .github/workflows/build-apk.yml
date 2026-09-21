@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   issues: write
+  pull-requests: write
 
 concurrency:
   group: apk-${{ github.ref }}
@@ -81,27 +82,47 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0" 2>&1 | tail -3 || true
 
       - name: Prepare release signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           # Preference order:
           #   1. repository secrets (use these for a Play Store upload key)
           #   2. the distribution key committed in android/keystore/release.p12
           #      so every build stays update-compatible for people who
           #      installed an earlier APK
-          #   3. nothing → debug build (clearly labelled in the release notes)
-          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+          #   3. nothing usable → debug build (clearly labelled in the notes)
+          if [ -n "$KS_B64" ]; then
             mkdir -p android/keystore
-            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/keystore/release.p12
+            printf '%s' "$KS_B64" | base64 -d > android/keystore/release.p12
             {
               echo "storeFile=keystore/release.p12"
-              echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
-              echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}"
-              echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}"
+              echo "storePassword=$KS_STORE_PASSWORD"
+              echo "keyAlias=$KS_ALIAS"
+              echo "keyPassword=$KS_KEY_PASSWORD"
             } > android/keystore.properties
-            echo "SIGNING=release" >> "$GITHUB_ENV"
-            echo "✓ signing with the key from repository secrets"
+            echo "KEY_SOURCE=repository secrets"
           elif [ -f android/keystore/release.p12 ] && [ -f android/keystore.properties ]; then
-            echo "SIGNING=release" >> "$GITHUB_ENV"
-            echo "✓ signing with the in-repo distribution key"
+            echo "KEY_SOURCE=in-repo distribution key"
+          else
+            echo "KEY_SOURCE="
+          fi
+
+          # Preflight: the key store must be readable by the JDK that signs the
+          # app, otherwise `assembleRelease` dies with a cryptic error.
+          if [ -n "$KEY_SOURCE" ]; then
+            if keytool -list -keystore android/keystore/release.p12 -storetype PKCS12 \
+                 -storepass "$(grep '^storePassword=' android/keystore.properties | cut -d= -f2-)" > "$RUNNER_TEMP/keytool.txt" 2>&1; then
+              echo "SIGNING=release" >> "$GITHUB_ENV"
+              echo "✓ signing with the $KEY_SOURCE"
+              grep -E 'Alias|Entry type|Valid' "$RUNNER_TEMP/keytool.txt" | head -5 || true
+            else
+              echo "SIGNING=debug" >> "$GITHUB_ENV"
+              echo "::warning::The key store could not be read by keytool — falling back to a debug build."
+              cat "$RUNNER_TEMP/keytool.txt"
+            fi
           else
             echo "SIGNING=debug" >> "$GITHUB_ENV"
             echo "::warning::No signing key found — the published APK will be a debug build."
@@ -187,6 +208,35 @@ jobs:
         with:
           files: out/*
           generate_release_notes: true
+
+      - name: Report build failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "## ❌ APK build failed"
+            echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo "```"
+            grep -nE "FAILURE|What went wrong|Caused by|error:|Execution failed|> Task .* FAILED|A problem occurred" \
+              "$RUNNER_TEMP/gradle.log" 2>/dev/null | tail -50 || echo "(no gradle.log)"
+            echo "```"
+            echo
+            echo "<details><summary>last 120 lines</summary>"
+            echo
+            echo "```"
+            tail -120 "$RUNNER_TEMP/gradle.log" 2>/dev/null || echo "(no gradle.log)"
+            echo "```"
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --repo "${{ github.repository }}" --body-file "$GITHUB_STEP_SUMMARY" || true
+          fi
 
       - name: Upload gradle log on failure
         if: failure()
