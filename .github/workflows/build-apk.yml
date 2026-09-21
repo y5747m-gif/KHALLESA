@@ -34,6 +34,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Inspect signing material
+        run: |
+          echo "HEAD: $(git rev-parse --short HEAD)"
+          echo "-- git ls-files (keystore):"
+          git ls-files | grep -i keystore || echo "   (none tracked)"
+          echo "-- on disk:"
+          ls -l android/keystore.properties android/keystore/ 2>&1 || true
+          echo "-- ignored?"
+          git check-ignore -v android/keystore/release.p12 android/keystore.properties || echo "   (not ignored)"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -108,6 +118,8 @@ jobs:
             echo "KEY_SOURCE=in-repo distribution key"
           else
             echo "KEY_SOURCE="
+            echo "::error::Signing material missing on the runner — p12=$([ -f android/keystore/release.p12 ] && echo yes || echo no) props=$([ -f android/keystore.properties ] && echo yes || echo no)"
+            ls -la android/ | head -20
           fi
 
           # Preflight: the key store must be readable by the JDK that signs the
