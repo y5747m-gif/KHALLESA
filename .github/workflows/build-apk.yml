@@ -113,49 +113,42 @@ jobs:
           KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          # Preference order:
-          #   1. repository secrets (use these for a Play Store upload key)
-          #   2. the distribution key committed in android/keystore/release.p12
-          #      so every build stays update-compatible for people who
-          #      installed an earlier APK
-          #   3. nothing usable → debug build (clearly labelled in the notes)
-          if [ -n "$KS_B64" ]; then
+          # Which key should sign the app?
+          #   1. repository secrets  (use these for a Google Play upload key)
+          #   2. the distribution key committed in android/keystore/release.p12,
+          #      so every build signs identically and installed APKs update in place
+          #   3. neither -> debug build, clearly labelled in the release notes
+          #
+          # Written with `test`/`printf` and no `elif` chain on purpose: the
+          # decision is echoed as an annotation because runner logs are not
+          # downloadable from every environment.
+          SIGN_SOURCE="none"
+          if test -n "$KS_B64"; then
             mkdir -p android/keystore
             printf '%s' "$KS_B64" | base64 -d > android/keystore/release.p12
-            {
-              echo "storeFile=keystore/release.p12"
-              echo "storePassword=$KS_STORE_PASSWORD"
-              echo "keyAlias=$KS_ALIAS"
-              echo "keyPassword=$KS_KEY_PASSWORD"
-            } > android/keystore.properties
-            echo "KEY_SOURCE=repository secrets"
-          elif [ -f android/keystore/release.p12 ] && [ -f android/keystore.properties ]; then
-            echo "KEY_SOURCE=in-repo distribution key"
-          else
-            KEY_SOURCE=""
-            echo "::warning::ks branch=NONE p12=$([ -f android/keystore/release.p12 ] && echo yes || echo no) props=$([ -f android/keystore.properties ] && echo yes || echo no)"
-            ls -la android/ android/keystore/ 2>&1 | head -30
+            printf 'storeFile=keystore/release.p12\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+              "$KS_STORE_PASSWORD" "$KS_ALIAS" "$KS_KEY_PASSWORD" > android/keystore.properties
+            SIGN_SOURCE="secrets"
           fi
-          echo "::warning::ks KEY_SOURCE=[$KEY_SOURCE] pwd=$(pwd) sha=$(sha256sum android/keystore/release.p12 2>/dev/null | cut -c1-16 || echo none)"
+          if test "$SIGN_SOURCE" = "none" && test -s android/keystore/release.p12 && test -s android/keystore.properties; then
+            SIGN_SOURCE="in-repo"
+          fi
 
-          # Preflight: the key store must be readable by the JDK that signs the
-          # app, otherwise `assembleRelease` dies with a cryptic error.
-          if [ -n "$KEY_SOURCE" ]; then
-            STORE_PASS="$(grep '^storePassword=' android/keystore.properties | cut -d= -f2-)"
-            if keytool -list -keystore android/keystore/release.p12 -storetype PKCS12 \
-                 -storepass "$STORE_PASS" > "$RUNNER_TEMP/keytool.txt" 2>&1; then
-              echo "SIGNING=release" >> "$GITHUB_ENV"
-              echo "::warning::ks keytool=OK - signing a release build (alias $(grep '^keyAlias=' android/keystore.properties | cut -d= -f2-))"
-              grep -E 'Alias|Entry type|Valid' "$RUNNER_TEMP/keytool.txt" | head -5 || true
+          SIGNING="debug"
+          KEY_NOTE="no key found"
+          if test "$SIGN_SOURCE" != "none"; then
+            STORE_PASS="$(sed -n 's/^storePassword=//p' android/keystore.properties | tail -1)"
+            if keytool -list -keystore android/keystore/release.p12 -storetype PKCS12 -storepass "$STORE_PASS" > "$RUNNER_TEMP/keytool.txt" 2>&1; then
+              SIGNING="release"
+              KEY_NOTE="signed with the $SIGN_SOURCE key, alias $(sed -n 's/^keyAlias=//p' android/keystore.properties | tail -1)"
             else
-              echo "SIGNING=debug" >> "$GITHUB_ENV"
-              echo "::warning::ks keytool=FAILED - debug build instead. keytool said: $(tr '\n' ' ' < "$RUNNER_TEMP/keytool.txt" | cut -c1-400)"
+              KEY_NOTE="key present ($SIGN_SOURCE) but keytool could not read it: $(tr '\n' ' ' < "$RUNNER_TEMP/keytool.txt" | cut -c1-300)"
             fi
-          else
-            echo "SIGNING=debug" >> "$GITHUB_ENV"
-            echo "::warning::No signing key found — the published APK will be a debug build."
-            echo "  Run 'npm run keystore' locally, or add ANDROID_KEYSTORE_BASE64 (+password/alias) as repository secrets."
           fi
+
+          echo "SIGNING=$SIGNING" >> "$GITHUB_ENV"
+          echo "::warning::ks signing=$SIGNING - $KEY_NOTE"
+          test "$SIGNING" = "release" || echo "::warning::Run 'npm run keystore' locally, or add ANDROID_KEYSTORE_BASE64 (+ _PASSWORD / _ALIAS / ANDROID_KEY_PASSWORD) as repository secrets."
 
       - name: Build debug APK
         run: |
