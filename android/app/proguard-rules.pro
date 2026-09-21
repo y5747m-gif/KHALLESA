@@ -19,3 +19,20 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# ─── KHALLESA (Capacitor WebView app) ──────────────────────────────────
+# Capacitor resolves plugins and @JavascriptBridge methods by reflection, so
+# their names must survive R8 shrinking.
+-keep class com.getcapacitor.** { *; }
+-keep class com.khallesa.app.** { *; }
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# Plugins that ship their own classes
+-keep class capacitor.** { *; }
+-keep class com.capacitorjs.** { *; }
+
+# Keep line numbers for readable crash reports.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

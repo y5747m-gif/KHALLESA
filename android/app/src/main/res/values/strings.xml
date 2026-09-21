@@ -3,5 +3,5 @@
     <string name="app_name">خَلِّصها</string>
     <string name="title_activity_main">خَلِّصها</string>
     <string name="package_name">com.khallesa.app</string>
-    <string name="custom_url_scheme">com.khallesa.app</string>
+    <string name="custom_url_scheme">khallesa</string>
 </resources>

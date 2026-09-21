@@ -94,7 +94,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
     setOwnerId(me?.id ?? members[0]?.id ?? '');
     setAssigneeId(me?.id ?? members[0]?.id ?? '');
     if (mode === 'voice') {
-      const t = setTimeout(() => beginListening(prefill ?? ''), 350);
+      const t = setTimeout(() => void beginListening(prefill ?? ''), 350);
       return () => clearTimeout(t);
     }
     if (mode === 'photo') {
@@ -106,22 +106,24 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
 
   useEffect(() => () => stopListening(), []);
 
-  function beginListening(base: string) {
+  async function beginListening(base: string) {
     if (!isVoiceSupported()) {
       setHint(s.micUnsupported);
       return;
     }
     stopListening();
     baseTextRef.current = base;
-    const h = startVoice({
+    setHint('');
+    const h = await startVoice({
       lang: lang === 'ar' ? 'ar-EG' : 'en-US',
+      prompt: s.listening,
       onResult: (t, isFinal) => {
         setText((baseTextRef.current ? baseTextRef.current + ' ' : '') + t);
         if (isFinal) baseTextRef.current = (baseTextRef.current ? baseTextRef.current + ' ' : '') + t;
       },
       onEnd: () => setListening(false),
-      onError: () => {
-        setHint(s.micFail);
+      onError: (reason) => {
+        setHint(reason === 'no-permission' ? s.micDenied : s.micFail);
         setListening(false);
       },
     });
@@ -152,9 +154,12 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
           allowEditing: false,
           resultType: CameraResultType.DataUrl,
           source: CameraSource.Prompt,
-          promptLabelHeader: s.photoBtn,
-          promptLabelPhoto: 'Gallery',
-          promptLabelPicture: 'Camera',
+          // native picker strings — the app must not show untranslated labels
+          promptLabelHeader: s.camPrompt,
+          promptLabelPhoto: s.camGallery,
+          promptLabelPicture: s.camCamera,
+          promptLabelCancel: s.close,
+          webUseInput: true,
         });
         if (res.dataUrl) {
           await handlePhotoData(res.dataUrl);
@@ -329,7 +334,7 @@ export default function AddFlow({ open, sessionKey, prefill, mode, members, sett
             />
             <div className="absolute bottom-2.5 end-2.5 flex gap-2">
               <button
-                onClick={() => (listening ? stopListening() : beginListening(text))}
+                onClick={() => (listening ? stopListening() : void beginListening(text))}
                 aria-label={s.voiceBtn}
                 className={cx(
                   'flex h-10 w-10 items-center justify-center rounded-full text-white shadow transition',

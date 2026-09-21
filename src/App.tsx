@@ -11,6 +11,7 @@ import {
 } from './lib/notify';
 import { LangProvider, STR } from './lib/i18n';
 import { useServiceWorker } from './lib/install';
+import { applyStatusBar, initNativeShell, isNativeApp, onDeepLink, onNativeBack } from './lib/native';
 import { cx, uid } from './lib/utils';
 import Home from './components/Home';
 import type { AddRequest } from './components/Home';
@@ -37,6 +38,9 @@ export default function App() {
   const [toast, setToast] = useState<{ id: string; msg: string } | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const { updateReady, applyUpdate } = useServiceWorker();
+  /** Resolved theme, also used to paint the native status bar. */
+  const [dark, setDark] = useState(false);
+  const native = useMemo(() => isNativeApp(), []);
 
   const lang = state.settings.lang;
   const s = STR[lang];
@@ -68,18 +72,63 @@ export default function App() {
     const mode = state.settings.darkMode;
     if (mode === 'dark') {
       root.classList.add('dark');
+      setDark(true);
       return;
     }
     if (mode === 'light') {
       root.classList.remove('dark');
+      setDark(false);
       return;
     }
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     root.classList.toggle('dark', mq.matches);
-    const fn = (e: MediaQueryListEvent) => root.classList.toggle('dark', e.matches);
+    setDark(mq.matches);
+    const fn = (e: MediaQueryListEvent) => {
+      root.classList.toggle('dark', e.matches);
+      setDark(e.matches);
+    };
     mq.addEventListener('change', fn);
     return () => mq.removeEventListener('change', fn);
   }, [state.settings.darkMode]);
+
+  // ── standalone-app shell ────────────────────────────────────────
+  // status bar + splash + hardware back button (no-op on the web build)
+  useEffect(() => {
+    void initNativeShell();
+  }, []);
+
+  useEffect(() => {
+    if (!native) return;
+    void applyStatusBar(dark ? 'dark' : 'light');
+  }, [dark, native]);
+
+  // khallesa://new · khallesa://ai — jump straight to the right screen
+  useEffect(() => {
+    if (!native) return;
+    return onDeepLink((action) => {
+      if (action === 'new') openAdd();
+      else if (action === 'ai') openAssistant();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [native]);
+
+  // Back button: task detail → current tab → home. Open sheets register
+  // their own handler on top of this one, so they close first.
+  useEffect(() => {
+    if (!native) return;
+    return onNativeBack(() => {
+      if (selectedId) {
+        setSelectedId(null);
+        return true;
+      }
+      if (tab !== 'home') {
+        setTab('home');
+        window.scrollTo({ top: 0 });
+        return true;
+      }
+      return false; // nothing left to unwind → exit the app
+    });
+  }, [native, selectedId, tab]);
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
@@ -328,7 +377,7 @@ export default function App() {
 
   return (
     <LangProvider value={lang}>
-      <div className="min-h-dvh">
+      <div className={cx('min-h-dvh', native && 'native-app')}>
         {selected ? (
           <TaskDetail
             task={selected}

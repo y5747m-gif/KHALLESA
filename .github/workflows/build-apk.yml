@@ -1,5 +1,14 @@
 name: Build APK (KHALLESA)
 
+# Builds the standalone Android app:
+#   • a signed release APK (when the signing secrets exist) — this is what
+#     users install, and it is published to the rolling `latest-apk` release
+#   • an Android App Bundle (.aab) for Google Play
+#   • a debug APK for every branch/PR, so nothing is ever unbuildable
+#
+# Stable download link used by the in-app button:
+#   https://github.com/y5747m-gif/KHALLESA/releases/download/latest-apk/khallesa.apk
+
 on:
   push:
     branches: ['**']
@@ -10,6 +19,10 @@ on:
 permissions:
   contents: write
   issues: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -32,6 +45,11 @@ jobs:
       - name: Generate PWA icons
         run: npm run icons
 
+      # vendors the OCR engine + Arabic/English models into public/ so the app
+      # never needs the network (no jsdelivr, no runtime model download)
+      - name: Vendor offline assets
+        run: npm run assets
+
       - name: Build web app
         run: npm run build
 
@@ -45,6 +63,8 @@ jobs:
           sed -i "s/versionName \"[^\"]*\"/versionName \"$V\"/" android/app/build.gradle
           sed -i "s/versionCode [0-9][0-9]*/versionCode $C/" android/app/build.gradle
           grep -E "versionName|versionCode" android/app/build.gradle
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+          echo "APP_BUILD=$C" >> "$GITHUB_ENV"
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -60,6 +80,34 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0" 2>&1 | tail -3 || true
 
+      - name: Prepare release signing key
+        run: |
+          # Preference order:
+          #   1. repository secrets (use these for a Play Store upload key)
+          #   2. the distribution key committed in android/keystore/release.p12
+          #      so every build stays update-compatible for people who
+          #      installed an earlier APK
+          #   3. nothing → debug build (clearly labelled in the release notes)
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            mkdir -p android/keystore
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/keystore/release.p12
+            {
+              echo "storeFile=keystore/release.p12"
+              echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+              echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}"
+              echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}"
+            } > android/keystore.properties
+            echo "SIGNING=release" >> "$GITHUB_ENV"
+            echo "✓ signing with the key from repository secrets"
+          elif [ -f android/keystore/release.p12 ] && [ -f android/keystore.properties ]; then
+            echo "SIGNING=release" >> "$GITHUB_ENV"
+            echo "✓ signing with the in-repo distribution key"
+          else
+            echo "SIGNING=debug" >> "$GITHUB_ENV"
+            echo "::warning::No signing key found — the published APK will be a debug build."
+            echo "  Run 'npm run keystore' locally, or add ANDROID_KEYSTORE_BASE64 (+password/alias) as repository secrets."
+          fi
+
       - name: Build debug APK
         run: |
           cd android
@@ -67,45 +115,77 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee "$RUNNER_TEMP/gradle.log"
           test "${PIPESTATUS[0]}" -eq 0
 
-      - name: Package APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk khallesa.apk
+      - name: Build release APK + AAB
+        if: env.SIGNING == 'release'
+        run: |
+          cd android
+          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee -a "$RUNNER_TEMP/gradle.log"
+          test "${PIPESTATUS[0]}" -eq 0
 
-      - name: Upload APK
+      - name: Stage artifacts
+        run: |
+          mkdir -p out
+          if [ "$SIGNING" = "release" ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk out/khallesa.apk
+            cp android/app/build/outputs/bundle/release/app-release.aab out/khallesa.aab
+          else
+            cp android/app/build/outputs/apk/debug/app-debug.apk out/khallesa.apk
+          fi
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/khallesa-debug.apk
+          sha256sum out/khallesa.apk | awk '{print $1}' > out/khallesa.apk.sha256
+          ls -lh out/
+          echo "APK_SIZE=$(du -h out/khallesa.apk | cut -f1)" >> "$GITHUB_ENV"
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: khallesa-apk
-          path: khallesa.apk
+          path: |
+            out/khallesa.apk
+            out/khallesa.apk.sha256
+            out/khallesa.aab
+            out/khallesa-debug.apk
+          if-no-files-found: warn
           retention-days: 30
 
-      # Rolling release → stable download URL used by the in-app "حمّل APK" button:
-      # https://github.com/y5747m-gif/KHALLESA/releases/download/latest-apk/khallesa.apk
+      # Rolling release → the stable URL the in-app "حمّل APK" button points at.
       - name: Publish rolling APK release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          V=$(node -p "require('./package.json').version")
+          NOTES="نسخة **خَلِّصها** v$APP_VERSION (build $APP_BUILD) — تطبيق أندرويد منفرد.
+
+          | الملف | الوصف |
+          |---|---|
+          | \`khallesa.apk\` | التطبيق المثبَّت على الموبايل ($SIGNING build, $APK_SIZE) |
+          | \`khallesa.aab\` | نسخة Google Play (موجودة لو البناء موقّع) |
+          | \`khallesa-debug.apk\` | نسخة debug للتجربة السريعة |
+
+          **التثبيت:** حمّل \`khallesa.apk\` ← افتح الملف ← «تثبيت» ← لو ظهر تحذير «مصدر غير معروف» سمح بيه لمرة واحدة.
+
+          كل شيء داخل التطبيق: الخطط، قراءة الصور (OCR عربي/إنجليزي)، التنبيهات، الوثائق — **تشتغل بدون إنترنت**، وبياناتك محفوظة على جهازك فقط.
+
+          SHA-256: \`\`\`$(cat out/khallesa.apk.sha256)\`\`\`"
           gh release delete latest-apk --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest-apk khallesa.apk \
-            --title "خَلِّصها APK — آخر بناء (v$V)" \
+          FILES="out/khallesa.apk out/khallesa.apk.sha256 out/khallesa-debug.apk"
+          [ -f out/khallesa.aab ] && FILES="$FILES out/khallesa.aab" || true
+          gh release create latest-apk $FILES \
+            --title "خَلِّصها APK — آخر بناء (v$APP_VERSION)" \
             --prerelease \
-            --notes "آخر نسخة APK مبنية تلقائيًا من الفرع الرئيسي (v$V).
-
-          ثبّتها على أندرويد: حمّل \`khallesa.apk\` ← افتح الملف ← «تثبيت» ← سمح بـ«مصدر غير معروف» لمرة واحدة.
-
-          كل البيانات محفوظة على جهازك فقط."
+            --notes "$NOTES"
 
       - name: Rename for versioned release
         if: startsWith(github.ref, 'refs/tags/v')
-        run: cp khallesa.apk khallesa-${{ github.ref_name }}.apk
+        run: |
+          cp out/khallesa.apk "out/khallesa-${{ github.ref_name }}.apk"
+          if [ -f out/khallesa.aab ]; then cp out/khallesa.aab "out/khallesa-${{ github.ref_name }}.aab"; fi
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            khallesa.apk
-            khallesa-${{ github.ref_name }}.apk
+          files: out/*
           generate_release_notes: true
 
       - name: Upload gradle log on failure

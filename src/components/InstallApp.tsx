@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { CheckCircle2, Download, RefreshCw, Share, Smartphone, X } from 'lucide-react';
-import { useStrings } from '../lib/i18n';
+import { useEffect, useState } from 'react';
+import { CheckCircle2, Download, Info, Package, RefreshCw, Share, Smartphone, X } from 'lucide-react';
+import { useLang, useStrings } from '../lib/i18n';
 import { APK_URL, RELEASES_URL, useInstallApp } from '../lib/install';
+import { getAppInfo, openExternal, shareApp } from '../lib/native';
+import type { NativeAppInfo } from '../lib/native';
 import { cx } from '../lib/utils';
 import { SectionTitle, Sheet } from './ui';
 
@@ -20,17 +22,19 @@ export function InstallCard(props: { updateReady?: boolean; applyUpdate?: () => 
     if (res === 'unavailable') setMsg(s.installManualHint);
   }
 
-  // Already an app (APK or installed PWA) → just confirm it.
-  if (state === 'native' || state === 'installed') {
+  // Running the real Android/iOS app → nothing to install, show what it is.
+  if (state === 'native') return <NativeAppCard />;
+
+  if (state === 'installed') {
     return (
       <div className="rounded-3xl bg-white p-4 shadow-sm dark:bg-neutral-900">
         <SectionTitle icon={Smartphone} title={s.installTitle} />
         <div className="flex items-start gap-2.5 rounded-2xl bg-brand-50 p-3 dark:bg-brand-700/15">
           <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400" />
           <div>
-            <p className="text-sm font-black">{state === 'native' ? s.installNative : s.installDone}</p>
+            <p className="text-sm font-black">{s.installDone}</p>
             <p className="mt-0.5 text-xs leading-5 font-bold text-neutral-500 dark:text-neutral-400">
-              {state === 'native' ? s.installNativeHint : s.installDoneHint}
+              {s.installDoneHint}
             </p>
           </div>
         </div>
@@ -85,14 +89,12 @@ export function InstallCard(props: { updateReady?: boolean; applyUpdate?: () => 
             <Download size={16} /> {s.installApkBtn}
           </a>
           <p className="mt-1.5 text-[11px] leading-5 text-neutral-400">{s.installApkNote}</p>
-          <a
-            href={RELEASES_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 inline-block text-[11px] font-extrabold text-brand-600"
+          <button
+            onClick={() => void openExternal(RELEASES_URL)}
+            className="mt-1 text-[11px] font-extrabold text-brand-600"
           >
             {s.installAllReleases} →
-          </a>
+          </button>
         </div>
       )}
 
@@ -101,11 +103,74 @@ export function InstallCard(props: { updateReady?: boolean; applyUpdate?: () => 
       {props.updateReady && (
         <button
           onClick={props.applyUpdate}
-          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-500 py-2.5 text-sm font-extrabold text-white"
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-500 py-2 text-xs font-extrabold text-white"
         >
-          <RefreshCw size={15} /> {s.updateBtn}
+          <RefreshCw size={14} /> {s.updateBtn}
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Shown only inside the standalone app: identity + what "installed" means here.
+ * Replaces all the web-only install hints (PWA prompt, APK download…).
+ */
+function NativeAppCard() {
+  const s = useStrings();
+  const lang = useLang();
+  const [info, setInfo] = useState<NativeAppInfo | null>(null);
+
+  useEffect(() => {
+    void getAppInfo().then(setInfo);
+  }, []);
+
+  const rows: Array<[string, string]> = [
+    [s.appVersion, info?.version || '—'],
+    [s.appBuild, info?.build || '—'],
+    [s.appPlatform, info?.platform === 'ios' ? 'iOS' : 'Android'],
+    [s.appPackage, info?.package || 'com.khallesa.app'],
+  ];
+
+  return (
+    <div className="rounded-3xl bg-white p-4 shadow-sm dark:bg-neutral-900">
+      <SectionTitle icon={Package} title={s.appInfoTitle} />
+
+      <div className="flex items-start gap-2.5 rounded-2xl bg-brand-50 p-3 dark:bg-brand-700/15">
+        <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400" />
+        <div>
+          <p className="text-sm font-black">{s.installNative}</p>
+          <p className="mt-0.5 text-xs leading-5 font-bold text-neutral-500 dark:text-neutral-400">
+            {s.installNativeHint}
+          </p>
+        </div>
+      </div>
+
+      <dl className="mt-3 divide-y divide-black/5 rounded-2xl border border-black/10 text-xs dark:divide-white/5 dark:border-white/10">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex items-center justify-between gap-3 px-3 py-2">
+            <dt className="font-extrabold text-neutral-500 dark:text-neutral-400">{k}</dt>
+            <dd dir="ltr" className="truncate font-black text-neutral-800 dark:text-neutral-100">{v}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => void shareApp(lang)}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-neutral-900 py-2.5 text-xs font-extrabold text-white dark:bg-white dark:text-neutral-900"
+        >
+          <Share size={14} /> {s.appShare}
+        </button>
+        <button
+          onClick={() => void openExternal(RELEASES_URL)}
+          className="flex items-center justify-center gap-1.5 rounded-xl border-2 border-black/10 px-3 py-2.5 text-xs font-extrabold dark:border-white/10"
+        >
+          <Info size={14} /> {s.installAllReleases}
+        </button>
+      </div>
+
+      <p className="mt-2.5 text-center text-[11px] font-bold text-neutral-400">{s.appOpensOffline}</p>
     </div>
   );
 }
@@ -136,14 +201,12 @@ export function InstallButton() {
           <li>1. {s.installIosHint}</li>
           <li>2. {s.installSub}</li>
         </ol>
-        <a
-          href={RELEASES_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 block text-center text-xs font-extrabold text-brand-600"
+        <button
+          onClick={() => void openExternal(RELEASES_URL)}
+          className="mt-3 block w-full text-center text-xs font-extrabold text-brand-600"
         >
           {s.installAllReleases} →
-        </a>
+        </button>
       </Sheet>
     </>
   );

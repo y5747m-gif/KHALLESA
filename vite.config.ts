@@ -25,6 +25,11 @@ function swVersion(): Plugin {
 export default defineConfig({
   // './' lets the build run from file:// inside the Capacitor WebView (APK)
   base: './',
+  define: {
+    // keeps the in-app version label in sync with package.json (and with the
+    // versionName the APK build stamps into android/app/build.gradle)
+    __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('package.json', 'utf8')).version),
+  },
   plugins: [react(), tailwindcss(), swVersion()],
   server: {
     host: '0.0.0.0',
