@@ -21,6 +21,7 @@ import type { Lang } from '../lib/i18n';
 import { APP_VERSION, useLang, useStrings } from '../lib/i18n';
 import { SOURCES, srcDesc, srcName } from '../lib/sources';
 import { ensureNotificationPermission, pingNow } from '../lib/notify';
+import { openExternal } from '../lib/native';
 import { cx, num, timeAgo } from '../lib/utils';
 import { Chip, EmptyState, SectionTitle, TrustBadge } from './ui';
 import { InstallCard } from './InstallApp';
@@ -247,7 +248,7 @@ export default function More({
               </div>
               <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{srcDesc(src, lang)}</p>
               <button
-                onClick={() => window.open(src.url, '_blank', 'noopener')}
+                onClick={() => void openExternal(src.url)}
                 className="mt-1.5 flex items-center gap-1 text-xs font-extrabold text-brand-600"
               >
                 <ExternalLink size={12} /> {src.url.replace('https://', '')}

@@ -2,7 +2,8 @@ import { createContext, useContext } from 'react';
 import type { CategoryId, PathId, TrustLevel } from './types';
 
 export type Lang = 'ar' | 'en';
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION: string =
+  typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0';
 
 // ─── Arabic (source of truth for keys) ───────────────────────────────
 const ar = {
@@ -89,6 +90,10 @@ const ar = {
   startFollow: 'ابدأ المتابعة',
   micUnsupported: 'المتصفح ده مش بيدعم الإدخال الصوتي — اكتب المشكلة كتابة.',
   micFail: 'تعذر تشغيل المايك — اكتب المشكلة كتابة.',
+  micDenied: 'لازم تسمح بالمايك الأول — من إعدادات التطبيق ← الأذونات ← الميكروفون.',
+  camPrompt: 'ضيف صورة للورقة أو الفاتورة',
+  camCamera: 'الكاميرا',
+  camGallery: 'من الصور',
   photoFail: 'تعذر قراءة الصورة — حاول بصورة تانية.',
   close: 'إغلاق',
   // task detail
@@ -263,6 +268,16 @@ const ar = {
   installApkNote: 'بعد التحميل: افتح الملف ← «تثبيت» ← لو ظهر تحذير «مصدر غير معروف» سمح بيه لمرة واحدة.',
   installAllReleases: 'كل الإصدارات',
   installOffline: 'بيشتغل بدون إنترنت بعد أول مرة ✅',
+  // standalone app (APK) info
+  appInfoTitle: 'عن التطبيق',
+  appInfoSub: 'ده تطبيق أندرويد منفرد مثبّت على جهازك — مش صفحة ويب.',
+  appNativeBadge: 'تطبيق منفرد ✅',
+  appVersion: 'الإصدار',
+  appBuild: 'رقم البناء',
+  appPackage: 'معرّف التطبيق',
+  appPlatform: 'النظام',
+  appShare: 'ابعت التطبيق لحد',
+  appOpensOffline: 'الخطط + OCR + التنبيهات + الوثائق كلها شغالة بدون إنترنت ✅',
   updateReady: 'فيه نسخة جديدة من خَلِّصها',
   updateBtn: 'تحديث دلوقتي',
   // onboarding
@@ -400,6 +415,10 @@ const en: Record<SKey, string> = {
   startFollow: 'Start follow-up',
   micUnsupported: 'This browser does not support voice input — please type instead.',
   micFail: 'Could not start the mic — please type instead.',
+  micDenied: 'Allow microphone access first — app settings ← Permissions ← Microphone.',
+  camPrompt: 'Add a photo of the paper or invoice',
+  camCamera: 'Camera',
+  camGallery: 'Gallery',
   photoFail: 'Could not read the image — try another one.',
   close: 'Close',
   stateNeed: 'Status: action needed',
@@ -568,6 +587,15 @@ const en: Record<SKey, string> = {
   installApkNote: 'After download: open the file → “Install” → if warned about unknown sources, allow it once.',
   installAllReleases: 'All releases',
   installOffline: 'Works with no connection after the first load ✅',
+  appInfoTitle: 'About the app',
+  appInfoSub: 'This is a standalone Android app installed on your device — not a web page.',
+  appNativeBadge: 'Standalone app ✅',
+  appVersion: 'Version',
+  appBuild: 'Build',
+  appPackage: 'App ID',
+  appPlatform: 'Platform',
+  appShare: 'Share the app',
+  appOpensOffline: 'Plans + OCR + reminders + vault all work with no connection ✅',
   updateReady: 'A new version of KHALLESA is ready',
   updateBtn: 'Update now',
   obLangT: 'اختار لغتك / Choose language',

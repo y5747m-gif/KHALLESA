@@ -1,8 +1,10 @@
 import { ShieldAlert, ShieldCheck, ShieldQuestion, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { TrustLevel } from '../lib/types';
 import { trustHint, trustLabel, useLang, useStrings } from '../lib/i18n';
+import { onNativeBack } from '../lib/native';
 import { cx } from '../lib/utils';
 
 // ─── Bottom sheet ────────────────────────────────────────────────────
@@ -16,6 +18,19 @@ export function Sheet(props: {
   tall?: boolean;
 }) {
   const s = useStrings();
+  const closeRef = useRef(props.onClose);
+  useEffect(() => {
+    closeRef.current = props.onClose;
+  }, [props.onClose]);
+  // Android hardware/gesture back closes the top-most sheet instead of
+  // leaving the app (no-op on web — the handler is never registered there).
+  useEffect(() => {
+    if (!props.open) return;
+    return onNativeBack(() => {
+      closeRef.current();
+      return true;
+    });
+  }, [props.open]);
   if (!props.open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">

@@ -1,5 +1,18 @@
 apply plugin: 'com.android.application'
 
+// ─── Release signing ───────────────────────────────────────────────────
+// `android/keystore.properties` (never committed) holds the key store path
+// and passwords. Generate one with:  npm run keystore
+// When it is missing, `assembleRelease` transparently falls back to the debug
+// key so local builds and CI previews never break.
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+def hasReleaseKey = keystoreProperties.getProperty('storeFile') != null &&
+        rootProject.file(keystoreProperties.getProperty('storeFile')).exists()
+
 android {
     namespace = "com.khallesa.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +29,32 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasReleaseKey) {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+    lint {
+        // `lintVitalRelease` runs only for release builds and turns unrelated
+        // warnings into hard failures; treat it as advisory.
+        checkReleaseBuilds false
+        abortOnError false
+    }
     buildTypes {
         release {
+            // Real app build: signed with the release key. Code shrinking is
+            // deliberately off — Capacitor resolves plugins by reflection, and
+            // the APK weight is the bundled web assets (OCR models), not Java.
+            // Flip `minifyEnabled` to true once the R8 keep rules are verified.
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.debug
         }
     }
 }

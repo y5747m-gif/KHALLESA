@@ -1,9 +1,11 @@
 @import "tailwindcss";
+/* Cairo, self-hosted: the standalone app must render with zero network calls. */
+@import "@fontsource-variable/cairo";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: "Cairo", "Segoe UI", Tahoma, system-ui, sans-serif;
+  --font-sans: "Cairo Variable", "Cairo", "Segoe UI", Tahoma, system-ui, sans-serif;
   --color-brand-50: #ecfdf3;
   --color-brand-100: #d1fadf;
   --color-brand-500: #0ea968;
@@ -60,3 +62,24 @@ body {
 /* safe-area padding for native bottom bar */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
 .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+
+/* ── standalone app (APK / installed PWA) ──────────────────────────────
+   It is an app, not a web page: no rubber-band scroll, no text selection
+   on taps, no callout menus, and it fills the gesture-nav bar area.      */
+.native-app {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+  /* status bar + nav bar are painted by the shell, not by the page */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.native-app input,
+.native-app textarea,
+.native-app [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.native-app .pb-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.25rem);
+}

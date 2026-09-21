@@ -99,3 +99,12 @@ app/src/main/assets/public
 app/src/main/assets/capacitor.config.json
 app/src/main/assets/capacitor.plugins.json
 app/src/main/res/xml/config.xml
+
+# Release signing material.
+# NOTE: `keystore.properties` + `keystore/release.p12` ARE committed on
+# purpose — that is the app's distribution key, and keeping it in the repo
+# means every CI build signs identically so installed APKs can be updated
+# in place. Replace it via ANDROID_KEYSTORE_* secrets before publishing to
+# Google Play (Play App Signing should hold your real upload key).
+*.jks
+*.keystore

@@ -23,6 +23,7 @@ import { catLabel, pathLabel, useLang, useStrings } from '../lib/i18n';
 import { buildClaimFile, nextStep, progressOf } from '../lib/engine';
 import { getSource, srcCheck, srcDesc, srcName } from '../lib/sources';
 import { isNative } from '../lib/notify';
+import { openExternal } from '../lib/native';
 import {
   compressDataUrl,
   cx,
@@ -267,7 +268,7 @@ export default function TaskDetail(props: TaskDetailProps) {
                 {stp.detail && !stp.done && <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{stp.detail}</p>}
                 {stp.actionUrl && !stp.done && (
                   <button
-                    onClick={() => window.open(stp.actionUrl, '_blank', 'noopener')}
+                    onClick={() => void openExternal(stp.actionUrl)}
                     className="mt-1.5 flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-extrabold text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
                   >
                     <ExternalLink size={12} /> {stp.actionLabel ?? s.openSource}
@@ -403,7 +404,7 @@ export default function TaskDetail(props: TaskDetailProps) {
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button
-                    onClick={() => window.open(src.url, '_blank', 'noopener')}
+                    onClick={() => void openExternal(src.url)}
                     className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-neutral-900 py-2 text-xs font-extrabold text-white dark:bg-white dark:text-neutral-900"
                   >
                     <ExternalLink size={13} /> {s.openSource}
